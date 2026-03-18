@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavení XT211 HAN adaptéru",
+        "description": "Zadej IP adresu a port RS485-to-Ethernet adaptéru (např. PUSR USR-DR134). Výchozí port pro TCP server mód je 8899.",
+        "data": {
+          "host": "IP adresa adaptéru",
+          "port": "TCP port",
+          "name": "Název zařízení"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nepodařilo se připojit k adaptéru. Zkontroluj IP adresu, port a připojení.",
+      "unknown": "Neočekávaná chyba. Zkontroluj log."
+    },
+    "abort": {
+      "already_configured": "Toto zařízení je již nakonfigurováno."
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "XT211 HAN Adapter Setup",
+        "description": "Enter the IP address and port of your RS485-to-Ethernet adapter (e.g. PUSR USR-DR134). The default TCP server port is 8899.",
+        "data": {
+          "host": "Adapter IP address",
+          "port": "TCP port",
+          "name": "Device name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the adapter. Check the IP address, port and network connection.",
+      "unknown": "Unexpected error. Check the log."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  }
+}
