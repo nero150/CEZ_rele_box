@@ -164,6 +164,9 @@ Předchozí funkční opravy z verzí 0.7.6 a 0.7.7:
 - `docs/pdfs/cez_rs485_han_interface.pdf`
 - `docs/pdfs/cez_obis_codes_han_2025-02-01.pdf`
 
+## Poděkování
+- Děkuji za inspiraci: https://github.com/Tomer27cz/xt211
+
 ## Licence
 
 MIT
