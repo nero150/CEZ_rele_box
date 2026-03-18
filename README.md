@@ -23,14 +23,12 @@ XT211 / Relay box
 
 ## Ověřený hardware
 
-Integrace byla ověřena s převodníkem z rodiny PUSR USR-DR132/USR-DR134. Výrobce na produktové stránce uvádí, že varianta **USR-DR134** má 1× RS485 port, podporuje TCP server mód, rozsah 600 až 230400 Bd a napájení 5 až 24 V DC. citeturn348633view0
-
-Pro XT211 dává smysl použít právě **USR-DR134** protože je to RS485 varianta. DR132 je RS232.
+-  PUSR USR-USR-DR134
 
 ## Instalace přes HACS
 
 1. Otevři HACS → **Integrace** → **Vlastní repozitáře**.
-2. Přidej URL tohoto repozitáře jako typ **Integration**.
+2. Přidej URL tohoto repozitáře jako typ **Integration** (https://github.com/nero150/CEZ_rele_box).
 3. Nainstaluj integraci **XT211 HAN**.
 4. Restartuj Home Assistant.
 5. V **Nastavení → Zařízení a služby** přidej integraci **XT211 HAN**.
@@ -94,8 +92,6 @@ Na reálně otestované sestavě se z XT211 / Relay boxu četou tyto hodnoty:
 - aktuální tarif
 - výrobní číslo elektroměru
 
-Dokumentace ČEZ uvádí širší seznam OBIS kódů včetně názvu zařízení, zprávy pro zákazníka, relé R5/R6 a dalších položek. V praxi ale záleží na tom, co konkrétní elektroměr opravdu posílá ve svém push profilu. Na testované sestavě se tyto položky v datech neobjevily, takže je integrace nevytváří dopředu jako prázdné entity. fileciteturn6file0 fileciteturn6file1
-
 ## Dostupné entity
 
 ### Výkon (W)
@@ -128,12 +124,6 @@ Dokumentace ČEZ uvádí širší seznam OBIS kódů včetně názvu zařízení
 - Aktuální tarif — `0-0:96.14.0.255`
 - Výrobní číslo — `0-0:96.1.1.255`
 
-## Známá omezení
-
-- Integrace zobrazí jen to, co elektroměr opravdu posílá v push datech.
-- Ne každý XT211 / Relay box posílá všechny OBIS položky z dokumentace.
-- Položky jako `Název zařízení`, `Zpráva pro zákazníka`, `Relé R5`, `Relé R6` se nemusí objevit vůbec.
-- Pokud přecházíš ze starší verze integrace, po změně typů entit je rozumné staré entity smazat a integraci nainstalovat znovu.
 
 ## Debug logování
 
@@ -167,28 +157,6 @@ Předchozí funkční opravy z verzí 0.7.6 a 0.7.7:
 - oprava binárních senzorů
 - oprava mapování výrobního čísla
 - odstranění trvale prázdných entit
-
-## Struktura repozitáře
-
-```text
-custom_components/xt211_han/
-├── __init__.py
-├── binary_sensor.py
-├── config_flow.py
-├── const.py
-├── coordinator.py
-├── dlms_parser.py
-├── manifest.json
-├── sensor.py
-├── strings.json
-└── translations/
-    ├── cs.json
-    └── en.json
-
-docs/
-├── images/
-└── pdfs/
-```
 
 ## Podklady v repozitáři
 
