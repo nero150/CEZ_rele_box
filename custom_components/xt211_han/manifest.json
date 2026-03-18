@@ -2,10 +2,10 @@
   "domain": "xt211_han",
   "name": "XT211 HAN (RS485 via Ethernet)",
   "version": "0.1.0",
-  "documentation": "https://github.com/Nero/xt211-han-ha",
-  "issue_tracker": "https://github.com/Nero/xt211-han-ha/issues",
+  "documentation": "https://github.com/nero150/xt211-han-ha",
+  "issue_tracker": "https://github.com/nero150/xt211-han-ha/issues",
   "dependencies": [],
-  "codeowners": ["@Nero"],
+  "codeowners": ["@nero150"],
   "requirements": [],
   "iot_class": "local_push",
   "config_flow": true
