@@ -125,12 +125,47 @@ class DLMSParser:
 
     def get_frame(self) -> ParseResult | None:
         """
-        Try to extract and parse one complete HDLC frame from the buffer.
-        Returns ParseResult if a frame was found, None if more data is needed.
+        Try to extract and parse one complete frame from the buffer.
+
+        Supports two formats:
+          1. HDLC-wrapped:  7E A0 xx ... 7E
+          2. Raw DLMS APDU: 0F [4B invoke-id] [optional datetime] [body]
+             (USR-DR134 strips the HDLC wrapper and sends raw APDU)
         """
         buf = self._buffer
 
-        # Find opening flag
+        if not buf:
+            return None
+
+        # ----------------------------------------------------------------
+        # Format 2: Raw DLMS APDU starting with 0x0F (Data-Notification)
+        # USR-DR134 sends this directly without HDLC framing
+        # ----------------------------------------------------------------
+        if buf[0] == 0x0F:
+            # We need at least 5 bytes (tag + 4B invoke-id)
+            if len(buf) < 5:
+                return None
+
+            # Heuristic: find the end of this APDU
+            # The USR-DR134 sends one complete APDU per TCP segment
+            # We consume everything in the buffer as one frame
+            raw = bytes(buf)
+            self._buffer.clear()
+
+            raw_hex = raw.hex()
+            _LOGGER.debug("Raw DLMS APDU (%d bytes): %s", len(raw), raw_hex[:80])
+
+            try:
+                result = self._parse_apdu(raw)
+                result.raw_hex = raw_hex
+                return result
+            except Exception as exc:
+                _LOGGER.exception("Error parsing raw DLMS APDU")
+                return ParseResult(success=False, raw_hex=raw_hex, error=str(exc))
+
+        # ----------------------------------------------------------------
+        # Format 1: HDLC-wrapped frame starting with 0x7E
+        # ----------------------------------------------------------------
         start = buf.find(HDLC_FLAG)
         if start == -1:
             self._buffer.clear()
@@ -143,22 +178,17 @@ class DLMSParser:
         if len(buf) < 3:
             return None
 
-        # Parse frame length from bytes 1-2 (A0 XX or A8 XX)
-        # Bits 11-0 of bytes 1-2 give frame length
         frame_len = ((buf[1] & 0x07) << 8) | buf[2]
-
-        # Total on-wire length = frame_len + 2 flags (opening already at 0, closing at frame_len+1)
         total = frame_len + 2
         if len(buf) < total:
-            return None  # incomplete frame, wait for more data
+            return None
 
         raw = bytes(buf[:total])
         del self._buffer[:total]
 
         raw_hex = raw.hex()
-        _LOGGER.debug("HDLC frame: %s", raw_hex)
+        _LOGGER.debug("HDLC frame (%d bytes): %s", len(raw), raw_hex[:80])
 
-        # Basic sanity: starts and ends with 0x7E
         if raw[0] != HDLC_FLAG or raw[-1] != HDLC_FLAG:
             return ParseResult(success=False, raw_hex=raw_hex, error="Missing HDLC flags")
 
