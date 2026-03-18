@@ -32,7 +32,16 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    CONF_PHASES,
+    CONF_HAS_FVE,
+    CONF_TARIFFS,
+    CONF_RELAY_COUNT,
+    PHASES_3,
+    TARIFFS_2,
+    RELAYS_4,
+)
 from .coordinator import XT211Coordinator
 from .dlms_parser import OBIS_DESCRIPTIONS
 
@@ -91,13 +100,70 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up all XT211 HAN entities from a config entry."""
+    """Set up all XT211 HAN entities from a config entry, filtered by meter config."""
     coordinator: XT211Coordinator = hass.data[DOMAIN][entry.entry_id]
+
+    phases       = entry.data.get(CONF_PHASES, PHASES_3)
+    has_fve      = entry.data.get(CONF_HAS_FVE, True)
+    tariffs      = int(entry.data.get(CONF_TARIFFS, TARIFFS_2))
+    relay_count  = int(entry.data.get(CONF_RELAY_COUNT, RELAYS_4))
+
+    # Build set of OBIS codes to include based on user config
+    enabled_obis: set[str] = set()
+
+    # Always include: device name, serial, tariff, consumer message, disconnector, limiter
+    enabled_obis.update({
+        "0-0:42.0.0.255",
+        "0-0:96.1.0.255",
+        "0-0:96.14.0.255",
+        "0-0:96.13.0.255",
+        "0-0:96.3.10.255",
+        "0-0:17.0.0.255",
+    })
+
+    # Relays – according to relay_count
+    relay_obis = {
+        1: "0-1:96.3.10.255",
+        2: "0-2:96.3.10.255",
+        3: "0-3:96.3.10.255",
+        4: "0-4:96.3.10.255",
+        5: "0-5:96.3.10.255",
+        6: "0-6:96.3.10.255",
+    }
+    for i in range(1, relay_count + 1):
+        enabled_obis.add(relay_obis[i])
+
+    # Instant power import – total always included
+    enabled_obis.add("1-0:1.7.0.255")
+    if phases == PHASES_3:
+        enabled_obis.update({"1-0:21.7.0.255", "1-0:41.7.0.255", "1-0:61.7.0.255"})
+
+    # Instant power export – only with FVE
+    if has_fve:
+        enabled_obis.add("1-0:2.7.0.255")
+        if phases == PHASES_3:
+            enabled_obis.update({"1-0:22.7.0.255", "1-0:42.7.0.255", "1-0:62.7.0.255"})
+
+    # Cumulative energy import – total + tariffs
+    enabled_obis.add("1-0:1.8.0.255")
+    for t in range(1, tariffs + 1):
+        enabled_obis.add(f"1-0:1.8.{t}.255")
+
+    # Cumulative energy export – only with FVE
+    if has_fve:
+        enabled_obis.add("1-0:2.8.0.255")
+
+    _LOGGER.debug(
+        "XT211 config: phases=%s fve=%s tariffs=%d relays=%d → %d entities",
+        phases, has_fve, tariffs, relay_count, len(enabled_obis),
+    )
 
     entities: list = []
     registered_obis: set[str] = set()
 
     for obis, meta in OBIS_DESCRIPTIONS.items():
+        if obis not in enabled_obis:
+            continue
         registered_obis.add(obis)
         if obis in BINARY_OBIS:
             entities.append(XT211BinarySensorEntity(coordinator, entry, obis, meta))
@@ -115,7 +181,7 @@ async def async_setup_entry(
             return
         new: list = []
         for obis, data in coordinator.data.items():
-            if obis in registered_obis:
+            if obis in registered_obis or obis not in enabled_obis:
                 continue
             registered_obis.add(obis)
             _LOGGER.info("XT211: discovered new OBIS code %s – adding entity", obis)

@@ -35,7 +35,7 @@ Elektroměr posílá DLMS/COSEM PUSH zprávy každých **60 sekund**. Integrace 
 ## Instalace přes HACS
 
 1. Otevři HACS → **Integrace** → tři tečky vpravo nahoře → **Vlastní repozitáře**
-2. Přidej URL tohoto repozitáře, kategorie: **Integration**  (https://github.com/nero150/CEZ_rele_box)
+2. Přidej URL tohoto repozitáře, kategorie: **Integration**
 3. Najdi „XT211 HAN" a nainstaluj
 4. Restartuj Home Assistant
 5. **Nastavení → Zařízení a služby → Přidat integraci → XT211 HAN**

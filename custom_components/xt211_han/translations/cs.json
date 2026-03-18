@@ -2,12 +2,22 @@
   "config": {
     "step": {
       "user": {
-        "title": "Nastavení XT211 HAN adaptéru",
+        "title": "Nastavení připojení",
         "description": "Zadej IP adresu a port RS485-to-Ethernet adaptéru (např. PUSR USR-DR134). Výchozí port pro TCP server mód je 8899.",
         "data": {
           "host": "IP adresa adaptéru",
           "port": "TCP port",
           "name": "Název zařízení"
+        }
+      },
+      "meter": {
+        "title": "Konfigurace elektroměru",
+        "description": "Upřesni parametry tvého elektroměru. Podle toho se zobrazí jen relevantní entity.",
+        "data": {
+          "phases": "Typ elektroměru",
+          "has_fve": "Mám fotovoltaiku (FVE) / export energie",
+          "tariffs": "Počet tarifů",
+          "relay_count": "Relé boxy (WM-RelayBox)"
         }
       }
     },

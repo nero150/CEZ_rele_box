@@ -2,12 +2,22 @@
   "config": {
     "step": {
       "user": {
-        "title": "XT211 HAN Adapter Setup",
+        "title": "Connection Setup",
         "description": "Enter the IP address and port of your RS485-to-Ethernet adapter (e.g. PUSR USR-DR134). The default TCP server port is 8899.",
         "data": {
           "host": "Adapter IP address",
           "port": "TCP port",
           "name": "Device name"
+        }
+      },
+      "meter": {
+        "title": "Meter Configuration",
+        "description": "Specify your meter parameters. Only relevant entities will be shown.",
+        "data": {
+          "phases": "Meter type",
+          "has_fve": "I have solar panels (FVE) / energy export",
+          "tariffs": "Number of tariffs",
+          "relay_count": "Relay boxes (WM-RelayBox)"
         }
       }
     },
