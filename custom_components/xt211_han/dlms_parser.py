@@ -436,23 +436,41 @@ class DLMSParser:
 # ---------------------------------------------------------------------------
 
 OBIS_DESCRIPTIONS: dict[str, dict] = {
-    "0-0:96.1.1.255":  {"name": "Serial Number",           "unit": "",    "class": "text"},
-    "0-0:96.3.10.255": {"name": "Disconnector Status",      "unit": "",    "class": "binary"},
-    "0-0:96.14.0.255": {"name": "Current Tariff",           "unit": "",    "class": "text"},
-    "1-0:1.7.0.255":   {"name": "Active Power Consumption", "unit": "W",   "class": "power"},
-    "1-0:2.7.0.255":   {"name": "Active Power Delivery",    "unit": "W",   "class": "power"},
-    "1-0:21.7.0.255":  {"name": "Active Power L1",          "unit": "W",   "class": "power"},
-    "1-0:41.7.0.255":  {"name": "Active Power L2",          "unit": "W",   "class": "power"},
-    "1-0:61.7.0.255":  {"name": "Active Power L3",          "unit": "W",   "class": "power"},
-    "1-0:1.8.0.255":   {"name": "Energy Consumed",          "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.1.255":   {"name": "Energy Consumed T1",       "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.2.255":   {"name": "Energy Consumed T2",       "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.3.255":   {"name": "Energy Consumed T3",       "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.4.255":   {"name": "Energy Consumed T4",       "unit": "Wh",  "class": "energy"},
-    "1-0:2.8.0.255":   {"name": "Energy Delivered",         "unit": "Wh",  "class": "energy"},
-    "0-1:96.3.10.255": {"name": "Relay R1 Status",          "unit": "",    "class": "binary"},
-    "0-2:96.3.10.255": {"name": "Relay R2 Status",          "unit": "",    "class": "binary"},
-    "0-3:96.3.10.255": {"name": "Relay R3 Status",          "unit": "",    "class": "binary"},
-    "0-4:96.3.10.255": {"name": "Relay R4 Status",          "unit": "",    "class": "binary"},
-    "0-0:17.0.0.255":  {"name": "Limiter Value",            "unit": "W",   "class": "power"},
+    # --- Diagnostic / text ---
+    "0-0:96.1.1.255":  {"name": "Serial Number",                "unit": "",    "class": "text"},
+    "0-0:96.14.0.255": {"name": "Current Tariff",               "unit": "",    "class": "text"},
+    "0-0:17.0.0.255":  {"name": "Limiter Value",                "unit": "W",   "class": "power"},
+
+    # --- Binary (disconnector / relays) ---
+    "0-0:96.3.10.255": {"name": "Disconnector Status",          "unit": "",    "class": "binary"},
+    "0-1:96.3.10.255": {"name": "Relay R1 Status",              "unit": "",    "class": "binary"},
+    "0-2:96.3.10.255": {"name": "Relay R2 Status",              "unit": "",    "class": "binary"},
+    "0-3:96.3.10.255": {"name": "Relay R3 Status",              "unit": "",    "class": "binary"},
+    "0-4:96.3.10.255": {"name": "Relay R4 Status",              "unit": "",    "class": "binary"},
+
+    # --- Instant power – consumption (odběr) ---
+    "1-0:1.7.0.255":   {"name": "Active Power Consumption",     "unit": "W",   "class": "power"},
+    "1-0:21.7.0.255":  {"name": "Active Power Consumption L1",  "unit": "W",   "class": "power"},
+    "1-0:41.7.0.255":  {"name": "Active Power Consumption L2",  "unit": "W",   "class": "power"},
+    "1-0:61.7.0.255":  {"name": "Active Power Consumption L3",  "unit": "W",   "class": "power"},
+
+    # --- Instant power – delivery (dodávka / FVE) ---
+    "1-0:2.7.0.255":   {"name": "Active Power Delivery",        "unit": "W",   "class": "power"},
+    "1-0:22.7.0.255":  {"name": "Active Power Delivery L1",     "unit": "W",   "class": "power"},
+    "1-0:42.7.0.255":  {"name": "Active Power Delivery L2",     "unit": "W",   "class": "power"},
+    "1-0:62.7.0.255":  {"name": "Active Power Delivery L3",     "unit": "W",   "class": "power"},
+
+    # --- Energy – consumption (odběr kWh) ---
+    "1-0:1.8.0.255":   {"name": "Energy Consumed",              "unit": "Wh",  "class": "energy"},
+    "1-0:1.8.1.255":   {"name": "Energy Consumed T1",           "unit": "Wh",  "class": "energy"},
+    "1-0:1.8.2.255":   {"name": "Energy Consumed T2",           "unit": "Wh",  "class": "energy"},
+    "1-0:1.8.3.255":   {"name": "Energy Consumed T3",           "unit": "Wh",  "class": "energy"},
+    "1-0:1.8.4.255":   {"name": "Energy Consumed T4",           "unit": "Wh",  "class": "energy"},
+
+    # --- Energy – delivery (dodávka kWh, FVE přetoky) ---
+    "1-0:2.8.0.255":   {"name": "Energy Delivered",             "unit": "Wh",  "class": "energy"},
+    "1-0:2.8.1.255":   {"name": "Energy Delivered T1",          "unit": "Wh",  "class": "energy"},
+    "1-0:2.8.2.255":   {"name": "Energy Delivered T2",          "unit": "Wh",  "class": "energy"},
+    "1-0:2.8.3.255":   {"name": "Energy Delivered T3",          "unit": "Wh",  "class": "energy"},
+    "1-0:2.8.4.255":   {"name": "Energy Delivered T4",          "unit": "Wh",  "class": "energy"},
 }

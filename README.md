@@ -35,7 +35,7 @@ Elektroměr posílá DLMS/COSEM PUSH zprávy každých **60 sekund**. Integrace 
 ## Instalace přes HACS
 
 1. Otevři HACS → **Integrace** → tři tečky vpravo nahoře → **Vlastní repozitáře**
-2. Přidej URL tohoto repozitáře, kategorie: **Integration**  (https://github.com/nero150/CEZ_rele_box)
+2. Přidej URL tohoto repozitáře, kategorie: **Integration**
 3. Najdi „XT211 HAN" a nainstaluj
 4. Restartuj Home Assistant
 5. **Nastavení → Zařízení a služby → Přidat integraci → XT211 HAN**
@@ -73,22 +73,49 @@ Napájení USR-DR134: 5–24V DC (např. z USB adaptéru přes step-up, nebo 12V
 
 ---
 
-## Dostupné senzory
+## Dostupné entity
 
-| Název | OBIS kód | Jednotka |
-|-------|----------|----------|
-| Active Power Consumption | `1-0:1.7.0.255` | W |
-| Active Power Delivery | `1-0:2.7.0.255` | W |
-| Active Power L1 | `1-0:21.7.0.255` | W |
-| Active Power L2 | `1-0:41.7.0.255` | W |
-| Active Power L3 | `1-0:61.7.0.255` | W |
-| Energy Consumed | `1-0:1.8.0.255` | kWh |
-| Energy Consumed T1 | `1-0:1.8.1.255` | kWh |
-| Energy Consumed T2 | `1-0:1.8.2.255` | kWh |
-| Energy Delivered | `1-0:2.8.0.255` | kWh |
-| Serial Number | `0-0:96.1.1.255` | – |
-| Current Tariff | `0-0:96.14.0.255` | – |
-| Disconnector Status | `0-0:96.3.10.255` | – |
+### 📊 Výkon (W) – okamžité hodnoty
+| Název entity | OBIS kód |
+|---|---|
+| Active Power Consumption | `1-0:1.7.0.255` |
+| Active Power Consumption L1 | `1-0:21.7.0.255` |
+| Active Power Consumption L2 | `1-0:41.7.0.255` |
+| Active Power Consumption L3 | `1-0:61.7.0.255` |
+| Active Power Delivery | `1-0:2.7.0.255` |
+| Active Power Delivery L1 | `1-0:22.7.0.255` |
+| Active Power Delivery L2 | `1-0:42.7.0.255` |
+| Active Power Delivery L3 | `1-0:62.7.0.255` |
+| Limiter Value | `0-0:17.0.0.255` |
+
+### ⚡ Energie (kWh) – kumulativní
+| Název entity | OBIS kód |
+|---|---|
+| Energy Consumed | `1-0:1.8.0.255` |
+| Energy Consumed T1 | `1-0:1.8.1.255` |
+| Energy Consumed T2 | `1-0:1.8.2.255` |
+| Energy Consumed T3 | `1-0:1.8.3.255` |
+| Energy Consumed T4 | `1-0:1.8.4.255` |
+| Energy Delivered | `1-0:2.8.0.255` |
+| Energy Delivered T1 | `1-0:2.8.1.255` |
+| Energy Delivered T2 | `1-0:2.8.2.255` |
+| Energy Delivered T3 | `1-0:2.8.3.255` |
+| Energy Delivered T4 | `1-0:2.8.4.255` |
+
+### 🔀 Binární senzory (zapnuto/vypnuto)
+| Název entity | OBIS kód |
+|---|---|
+| Disconnector Status | `0-0:96.3.10.255` |
+| Relay R1 Status | `0-1:96.3.10.255` |
+| Relay R2 Status | `0-2:96.3.10.255` |
+| Relay R3 Status | `0-3:96.3.10.255` |
+| Relay R4 Status | `0-4:96.3.10.255` |
+
+### 📋 Diagnostika (text)
+| Název entity | OBIS kód |
+|---|---|
+| Serial Number | `0-0:96.1.1.255` |
+| Current Tariff | `0-0:96.14.0.255` |
 
 ---
 
