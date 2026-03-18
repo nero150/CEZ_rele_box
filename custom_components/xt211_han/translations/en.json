@@ -2,13 +2,33 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connection Setup",
-        "description": "Enter the IP address and port of your RS485-to-Ethernet adapter (e.g. PUSR USR-DR134). The default TCP server port is 8899.",
+        "title": "Add XT211 HAN",
+        "description": "How would you like to find the adapter?",
+        "data": {
+          "method": "Discovery method"
+        }
+      },
+      "scan": {
+        "title": "Network Scan",
+        "description": "Scanning network on port 8899... Select a discovered device or enter IP manually.",
         "data": {
           "host": "Adapter IP address",
           "port": "TCP port",
           "name": "Device name"
         }
+      },
+      "manual": {
+        "title": "Manual Entry",
+        "description": "Enter the IP address and port of your RS485-to-Ethernet adapter (e.g. PUSR USR-DR134). Default port is 8899.",
+        "data": {
+          "host": "Adapter IP address",
+          "port": "TCP port",
+          "name": "Device name"
+        }
+      },
+      "dhcp_confirm": {
+        "title": "USR IOT Device Found",
+        "description": "Home Assistant automatically discovered an adapter at **{host}:{port}**. Would you like to set up the XT211 HAN integration for this device?"
       },
       "meter": {
         "title": "Meter Configuration",
@@ -23,10 +43,12 @@
     },
     "error": {
       "cannot_connect": "Could not connect to the adapter. Check the IP address, port and network connection.",
+      "no_devices_found": "No devices found on port 8899. Try entering the IP address manually.",
       "unknown": "Unexpected error. Check the log."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "not_supported": "This device is not supported."
     }
   }
 }

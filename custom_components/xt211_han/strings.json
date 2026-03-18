@@ -2,13 +2,33 @@
   "config": {
     "step": {
       "user": {
-        "title": "Nastavení připojení",
-        "description": "Zadej IP adresu a port RS485-to-Ethernet adaptéru (např. PUSR USR-DR134). Výchozí port pro TCP server mód je 8899.",
+        "title": "Přidat XT211 HAN",
+        "description": "Jak chceš najít adaptér?",
+        "data": {
+          "method": "Metoda vyhledání"
+        }
+      },
+      "scan": {
+        "title": "Vyhledávání v síti",
+        "description": "Prohledávám síť na portu 8899... Vyber nalezené zařízení nebo zadej IP ručně.",
         "data": {
           "host": "IP adresa adaptéru",
           "port": "TCP port",
           "name": "Název zařízení"
         }
+      },
+      "manual": {
+        "title": "Ruční zadání",
+        "description": "Zadej IP adresu a port RS485-to-Ethernet adaptéru (např. PUSR USR-DR134). Výchozí port je 8899.",
+        "data": {
+          "host": "IP adresa adaptéru",
+          "port": "TCP port",
+          "name": "Název zařízení"
+        }
+      },
+      "dhcp_confirm": {
+        "title": "Nalezeno zařízení USR IOT",
+        "description": "Home Assistant automaticky nalezl adaptér na adrese **{host}:{port}**. Chceš nastavit integraci XT211 HAN pro toto zařízení?"
       },
       "meter": {
         "title": "Konfigurace elektroměru",
@@ -23,10 +43,12 @@
     },
     "error": {
       "cannot_connect": "Nepodařilo se připojit k adaptéru. Zkontroluj IP adresu, port a připojení.",
+      "no_devices_found": "V síti nebyla nalezena žádná zařízení na portu 8899. Zkus zadat IP adresu ručně.",
       "unknown": "Neočekávaná chyba. Zkontroluj log."
     },
     "abort": {
-      "already_configured": "Toto zařízení je již nakonfigurováno."
+      "already_configured": "Toto zařízení je již nakonfigurováno.",
+      "not_supported": "Toto zařízení není podporováno."
     }
   }
 }
