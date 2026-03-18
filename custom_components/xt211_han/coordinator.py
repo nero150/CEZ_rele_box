@@ -1,51 +1,31 @@
-"""
-Coordinator for XT211 HAN integration.
-
-Opens a persistent TCP connection to the RS485-to-Ethernet adapter
-(e.g. USR-DR134) and receives DLMS/COSEM PUSH frames every 60 seconds.
-"""
+"""Coordinator for XT211 HAN integration."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .dlms_parser import DLMSParser, DLMSObject, OBIS_DESCRIPTIONS
-from .const import DOMAIN
+from .dlms_parser import DLMSObject, DLMSParser, OBIS_DESCRIPTIONS
 
 _LOGGER = logging.getLogger(__name__)
 
-# We expect a frame every 60 s; allow some margin before timing out
-PUSH_TIMEOUT = 90  # seconds
-RECONNECT_DELAY = 10  # seconds after connection loss
+PUSH_TIMEOUT = 90
+RECONNECT_DELAY = 10
 
 
 class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """
-    Coordinator that maintains a persistent TCP connection to the
-    RS485-to-Ethernet adapter and decodes incoming DLMS PUSH frames.
+    """Persistent TCP listener for XT211 DLMS push frames."""
 
-    Data is published to HA listeners whenever a new frame arrives,
-    not on a fixed poll interval (update_interval=None triggers manual).
-    """
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        host: str,
-        port: int,
-        name: str,
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, host: str, port: int, name: str) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name=f"XT211 HAN ({host}:{port})",
-            update_interval=None,  # push-driven, not poll-driven
+            update_interval=None,
         )
         self.host = host
         self.port = port
@@ -55,17 +35,13 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._writer: asyncio.StreamWriter | None = None
         self._listen_task: asyncio.Task | None = None
         self._connected = False
-
-    # ------------------------------------------------------------------
-    # Public helpers
-    # ------------------------------------------------------------------
+        self._frames_received = 0
 
     @property
     def connected(self) -> bool:
         return self._connected
 
     async def async_setup(self) -> None:
-        """Start the background listener task."""
         if self._listen_task is None or self._listen_task.done():
             self._listen_task = self.hass.async_create_background_task(
                 self._listen_loop(),
@@ -73,7 +49,6 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     async def async_shutdown(self) -> None:
-        """Stop the listener and close the connection."""
         if self._listen_task:
             self._listen_task.cancel()
             try:
@@ -82,22 +57,10 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 pass
         await self._disconnect()
 
-    # ------------------------------------------------------------------
-    # DataUpdateCoordinator required override
-    # ------------------------------------------------------------------
-
     async def _async_update_data(self) -> dict[str, Any]:
-        """Called by HA when entities want a refresh. Returns current data."""
-        if self.data is None:
-            return {}
-        return self.data
-
-    # ------------------------------------------------------------------
-    # TCP listener loop
-    # ------------------------------------------------------------------
+        return self.data or {}
 
     async def _listen_loop(self) -> None:
-        """Main loop: connect → receive → reconnect on error."""
         while True:
             try:
                 await self._connect()
@@ -106,11 +69,14 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.info("XT211 listener task cancelled")
                 raise
             except Exception as exc:
+                self._connected = False
                 _LOGGER.warning(
                     "XT211 connection error (%s:%d): %s – retrying in %ds",
-                    self.host, self.port, exc, RECONNECT_DELAY,
+                    self.host,
+                    self.port,
+                    exc,
+                    RECONNECT_DELAY,
                 )
-                self._connected = False
             finally:
                 await self._disconnect()
 
@@ -122,8 +88,8 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             asyncio.open_connection(self.host, self.port),
             timeout=10,
         )
+        self._parser = DLMSParser()
         self._connected = True
-        self._parser = DLMSParser()  # reset parser state on new connection
         _LOGGER.info("Connected to XT211 adapter at %s:%d", self.host, self.port)
 
     async def _disconnect(self) -> None:
@@ -138,59 +104,68 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._reader = None
 
     async def _receive_loop(self) -> None:
-        """Read bytes from the TCP stream and feed them to the parser."""
         assert self._reader is not None
 
         while True:
             try:
-                chunk = await asyncio.wait_for(
-                    self._reader.read(4096),
-                    timeout=PUSH_TIMEOUT,
-                )
-            except asyncio.TimeoutError:
-                _LOGGER.warning(
-                    "No data from XT211 for %d s – reconnecting", PUSH_TIMEOUT
-                )
-                raise ConnectionError("Push timeout")
+                chunk = await asyncio.wait_for(self._reader.read(4096), timeout=PUSH_TIMEOUT)
+            except asyncio.TimeoutError as exc:
+                _LOGGER.warning("No data from XT211 for %d s – reconnecting", PUSH_TIMEOUT)
+                raise ConnectionError("Push timeout") from exc
 
             if not chunk:
                 _LOGGER.warning("XT211 adapter closed connection")
                 raise ConnectionError("Remote closed")
 
+            _LOGGER.debug("XT211 RX %d bytes: %s", len(chunk), chunk.hex())
             self._parser.feed(chunk)
 
-            # Process all complete frames in the buffer
             while True:
                 result = self._parser.get_frame()
                 if result is None:
                     break
+
+                self._frames_received += 1
                 if result.success:
+                    _LOGGER.debug(
+                        "XT211 frame #%d parsed OK: %d object(s)",
+                        self._frames_received,
+                        len(result.objects),
+                    )
                     await self._process_frame(result.objects)
                 else:
                     _LOGGER.debug(
-                        "Frame parse error: %s (raw: %s)",
-                        result.error, result.raw_hex[:80],
+                        "XT211 frame #%d parse error: %s (raw: %s)",
+                        self._frames_received,
+                        result.error,
+                        result.raw_hex[:120],
                     )
 
     async def _process_frame(self, objects: list[DLMSObject]) -> None:
-        """Update coordinator data from a decoded DLMS frame."""
         if not objects:
             _LOGGER.debug("Received empty DLMS frame")
             return
 
         current = dict(self.data or {})
+        changed: list[str] = []
 
         for obj in objects:
             meta = OBIS_DESCRIPTIONS.get(obj.obis, {})
-            current[obj.obis] = {
+            new_value = {
                 "value": obj.value,
                 "unit": obj.unit or meta.get("unit", ""),
                 "name": meta.get("name", obj.obis),
                 "class": meta.get("class", "sensor"),
             }
-            _LOGGER.debug(
-                "OBIS %s = %s %s", obj.obis, obj.value, obj.unit
-            )
+            if current.get(obj.obis) != new_value:
+                changed.append(obj.obis)
+            current[obj.obis] = new_value
+            _LOGGER.debug("XT211 OBIS %s = %r %s", obj.obis, obj.value, new_value["unit"])
 
         self.async_set_updated_data(current)
-        _LOGGER.debug("Updated %d DLMS objects from XT211 frame", len(objects))
+        _LOGGER.debug(
+            "Coordinator updated with %d object(s), %d changed: %s",
+            len(objects),
+            len(changed),
+            ", ".join(changed[:10]),
+        )

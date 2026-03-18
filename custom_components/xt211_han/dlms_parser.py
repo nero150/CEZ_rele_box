@@ -1,184 +1,90 @@
-"""
-DLMS/COSEM PUSH mode parser for Sagemcom XT211 smart meter.
-
-The XT211 sends unsolicited HDLC-framed DLMS/COSEM data every 60 seconds
-over RS485 (9600 baud, 8N1). This module decodes those frames.
-
-Frame structure (HDLC):
-  7E                      - HDLC flag
-  A0 xx                   - Frame type + length
-  00 02 00 01 ...         - Destination / source addresses
-  13                      - Control byte (UI frame)
-  xx xx                   - HCS (header checksum)
-  [LLC header]            - E6 E7 00
-  [APDU]                  - DLMS application data (tag 0F = Data-notification)
-  xx xx                   - FCS (frame checksum)
-  7E                      - HDLC flag
-
-OBIS codes supported (from ČEZ Distribuce spec):
-  0-0:96.1.1.255   - Serial number (Device ID)
-  0-0:96.3.10.255  - Disconnector status
-  0-0:96.14.0.255  - Current tariff
-  1-0:1.7.0.255    - Instant active power consumption (W)
-  1-0:2.7.0.255    - Instant active power delivery (W)
-  1-0:21.7.0.255   - Instant power L1 (W)
-  1-0:41.7.0.255   - Instant power L2 (W)
-  1-0:61.7.0.255   - Instant power L3 (W)
-  1-0:1.8.0.255    - Active energy consumed (Wh)
-  1-0:1.8.1.255    - Active energy T1 (Wh)
-  1-0:1.8.2.255    - Active energy T2 (Wh)
-  1-0:2.8.0.255    - Active energy delivered (Wh)
-  0-1:96.3.10.255  - Relay R1 status
-  0-2:96.3.10.255  - Relay R2 status
-  0-3:96.3.10.255  - Relay R3 status
-  0-4:96.3.10.255  - Relay R4 status
-"""
+"""DLMS/COSEM PUSH parser for Sagemcom XT211 smart meter."""
 
 from __future__ import annotations
 
 import logging
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
 HDLC_FLAG = 0x7E
 
-# DLMS data types
 DLMS_TYPE_NULL = 0x00
+DLMS_TYPE_ARRAY = 0x01
+DLMS_TYPE_STRUCTURE = 0x02
 DLMS_TYPE_BOOL = 0x03
+DLMS_TYPE_INT32 = 0x05
+DLMS_TYPE_UINT32 = 0x06
+DLMS_TYPE_OCTET_STRING = 0x09
+DLMS_TYPE_VISIBLE_STRING = 0x0A
 DLMS_TYPE_INT8 = 0x0F
 DLMS_TYPE_INT16 = 0x10
 DLMS_TYPE_UINT8 = 0x11
 DLMS_TYPE_UINT16 = 0x12
-DLMS_TYPE_INT32 = 0x05
-DLMS_TYPE_UINT32 = 0x06
+DLMS_TYPE_COMPACT_ARRAY = 0x13
 DLMS_TYPE_INT64 = 0x14
 DLMS_TYPE_UINT64 = 0x15
-DLMS_TYPE_FLOAT32 = 0x16
-DLMS_TYPE_FLOAT64 = 0x17
-DLMS_TYPE_OCTET_STRING = 0x09
-DLMS_TYPE_VISIBLE_STRING = 0x0A
-DLMS_TYPE_ARRAY = 0x01
-DLMS_TYPE_STRUCTURE = 0x02
-DLMS_TYPE_COMPACT_ARRAY = 0x13
+DLMS_TYPE_ENUM = 0x16
+DLMS_TYPE_FLOAT32 = 0x17
+DLMS_TYPE_FLOAT64 = 0x18
 
-# SI unit multipliers (DLMS scaler)
-# Scaler is a signed int8 representing 10^scaler
-def apply_scaler(value: int | float, scaler: int) -> float:
-    """Apply DLMS scaler (10^scaler) to a raw value."""
-    return float(value) * (10 ** scaler)
+
+class NeedMoreData(Exception):
+    """Raised when the parser needs more bytes to finish a frame."""
 
 
 @dataclass
 class DLMSObject:
-    """A single decoded DLMS COSEM object."""
-    obis: str           # e.g. "1-0:1.8.0.255"
-    value: Any          # decoded Python value
-    unit: str = ""      # e.g. "W", "Wh", ""
-    scaler: int = 0     # raw scaler from frame
+    obis: str
+    value: Any
+    unit: str = ""
+    scaler: int = 0
 
 
 @dataclass
 class ParseResult:
-    """Result of parsing one HDLC frame."""
     success: bool
-    objects: list[DLMSObject] = None
+    objects: list[DLMSObject] = field(default_factory=list)
     raw_hex: str = ""
     error: str = ""
 
-    def __post_init__(self):
-        if self.objects is None:
-            self.objects = []
-
 
 class DLMSParser:
-    """
-    Stateful DLMS/COSEM PUSH mode parser for XT211.
-
-    Usage:
-        parser = DLMSParser()
-        parser.feed(bytes_from_tcp)
-        while (result := parser.get_frame()):
-            process(result)
-    """
-
-    # DLMS unit codes → human readable strings
-    UNIT_MAP = {
-        1: "a",     2: "mo",    3: "wk",    4: "d",     5: "h",
-        6: "min",   7: "s",     8: "°",     9: "°C",    10: "currency",
-        11: "m",    12: "m/s",  13: "m³",   14: "m³",   15: "m³/h",
-        16: "m³/h", 17: "m³/d", 18: "m³/d", 19: "l",    20: "kg",
-        21: "N",    22: "Nm",   23: "Pa",   24: "bar",   25: "J",
-        26: "J/h",  27: "W",    28: "VA",   29: "var",   30: "Wh",
-        31: "VAh",  32: "varh", 33: "A",    34: "C",     35: "V",
-        36: "V/m",  37: "F",    38: "Ω",    39: "Ωm²/m",40: "Wb",
-        41: "T",    42: "A/m",  43: "H",    44: "Hz",    45: "1/Wh",
-        46: "1/varh",47: "1/VAh",48: "V²h", 49: "A²h",  50: "kg/s",
-        51: "S",    52: "K",    53: "1/(V²h)",54: "1/(A²h)",
-        255: "",    0: "",
-    }
+    """Stateful parser for raw DLMS APDUs and HDLC-wrapped frames."""
 
     def __init__(self) -> None:
         self._buffer = bytearray()
 
     def feed(self, data: bytes) -> None:
-        """Add raw bytes from TCP socket to the internal buffer."""
         self._buffer.extend(data)
 
     def get_frame(self) -> ParseResult | None:
-        """
-        Try to extract and parse one complete frame from the buffer.
-
-        Supports two formats:
-          1. HDLC-wrapped:  7E A0 xx ... 7E
-          2. Raw DLMS APDU: 0F [4B invoke-id] [optional datetime] [body]
-             (USR-DR134 strips the HDLC wrapper and sends raw APDU)
-        """
-        buf = self._buffer
-
-        if not buf:
+        """Return one parsed frame from the internal buffer, if available."""
+        if not self._buffer:
             return None
 
-        # ----------------------------------------------------------------
-        # Format 2: Raw DLMS APDU starting with 0x0F (Data-Notification)
-        # USR-DR134 sends this directly without HDLC framing
-        # ----------------------------------------------------------------
-        if buf[0] == 0x0F:
-            # We need at least 5 bytes (tag + 4B invoke-id)
-            if len(buf) < 5:
-                return None
+        if self._buffer[0] == HDLC_FLAG:
+            return self._get_hdlc_frame()
 
-            # Heuristic: find the end of this APDU
-            # The USR-DR134 sends one complete APDU per TCP segment
-            # We consume everything in the buffer as one frame
-            raw = bytes(buf)
-            self._buffer.clear()
-
-            raw_hex = raw.hex()
-            _LOGGER.debug("Raw DLMS APDU (%d bytes): %s", len(raw), raw_hex[:80])
-
-            try:
-                result = self._parse_apdu(raw)
-                result.raw_hex = raw_hex
-                return result
-            except Exception as exc:
-                _LOGGER.exception("Error parsing raw DLMS APDU")
-                return ParseResult(success=False, raw_hex=raw_hex, error=str(exc))
-
-        # ----------------------------------------------------------------
-        # Format 1: HDLC-wrapped frame starting with 0x7E
-        # ----------------------------------------------------------------
-        start = buf.find(HDLC_FLAG)
+        start = self._find_apdu_start(self._buffer)
         if start == -1:
+            _LOGGER.debug("Discarding %d bytes without known frame start", len(self._buffer))
             self._buffer.clear()
             return None
-        if start > 0:
-            _LOGGER.debug("Discarding %d bytes before HDLC flag", start)
-            del self._buffer[:start]
-            buf = self._buffer
 
+        if start > 0:
+            _LOGGER.debug("Discarding %d leading byte(s) before APDU", start)
+            del self._buffer[:start]
+
+        if self._buffer and self._buffer[0] == 0x0F:
+            return self._get_raw_apdu_frame()
+
+        return None
+
+    def _get_hdlc_frame(self) -> ParseResult | None:
+        buf = self._buffer
         if len(buf) < 3:
             return None
 
@@ -188,10 +94,8 @@ class DLMSParser:
             return None
 
         raw = bytes(buf[:total])
-        del self._buffer[:total]
-
+        del buf[:total]
         raw_hex = raw.hex()
-        _LOGGER.debug("HDLC frame (%d bytes): %s", len(raw), raw_hex[:80])
 
         if raw[0] != HDLC_FLAG or raw[-1] != HDLC_FLAG:
             return ParseResult(success=False, raw_hex=raw_hex, error="Missing HDLC flags")
@@ -200,312 +104,282 @@ class DLMSParser:
             result = self._parse_hdlc(raw)
             result.raw_hex = raw_hex
             return result
-        except Exception as exc:
+        except NeedMoreData:
+            # Should not happen for HDLC because total length is known.
+            return None
+        except Exception as exc:  # pragma: no cover - defensive logging
             _LOGGER.exception("Error parsing HDLC frame")
             return ParseResult(success=False, raw_hex=raw_hex, error=str(exc))
 
-    # ------------------------------------------------------------------
-    # Internal parsing methods
-    # ------------------------------------------------------------------
+    def _get_raw_apdu_frame(self) -> ParseResult | None:
+        buf = self._buffer
+        try:
+            result, consumed = self._parse_apdu_with_length(bytes(buf))
+        except NeedMoreData:
+            return None
+        except Exception as exc:  # pragma: no cover - defensive logging
+            raw_hex = bytes(buf).hex()
+            _LOGGER.exception("Error parsing raw DLMS APDU")
+            del buf[:]
+            return ParseResult(success=False, raw_hex=raw_hex, error=str(exc))
+
+        raw = bytes(buf[:consumed])
+        del buf[:consumed]
+        result.raw_hex = raw.hex()
+        return result
 
     def _parse_hdlc(self, raw: bytes) -> ParseResult:
-        """Parse full HDLC frame and extract DLMS objects."""
-        pos = 1  # skip opening flag
+        pos = 1
+        pos += 2  # frame format
+        _, pos = self._read_hdlc_address(raw, pos)
+        _, pos = self._read_hdlc_address(raw, pos)
+        pos += 1  # control
+        pos += 2  # HCS
 
-        # Frame format byte (should be A0 or A8)
-        # bits 11-0 = length
-        _frame_type = raw[pos] & 0xF8
-        frame_len = ((raw[pos] & 0x07) << 8) | raw[pos + 1]
-        pos += 2
-
-        # Destination address (variable length, LSB=1 means last byte)
-        dest_addr, pos = self._read_hdlc_address(raw, pos)
-        # Source address
-        src_addr, pos = self._read_hdlc_address(raw, pos)
-
-        # Control byte
-        control = raw[pos]; pos += 1
-
-        # HCS (2 bytes header checksum) - skip
-        pos += 2
-
-        # From here: LLC + APDU
-        # LLC header: E6 E7 00 (or E6 E6 00 for request)
         if pos + 3 > len(raw) - 3:
-            return ParseResult(success=False, error="Frame too short for LLC")
+            raise ValueError("Frame too short for LLC")
 
-        llc = raw[pos:pos+3]; pos += 3
-        _LOGGER.debug("LLC: %s  dest=%s  src=%s", llc.hex(), dest_addr, src_addr)
-
-        # APDU starts here, ends 3 bytes before end (FCS + closing flag)
+        pos += 3  # LLC header
         apdu = raw[pos:-3]
-        _LOGGER.debug("APDU (%d bytes): %s", len(apdu), apdu.hex())
-
-        return self._parse_apdu(apdu)
+        result, _ = self._parse_apdu_with_length(apdu)
+        return result
 
     def _read_hdlc_address(self, data: bytes, pos: int) -> tuple[int, int]:
-        """Read HDLC variable-length address. Returns (address_value, new_pos)."""
         addr = 0
         shift = 0
-        while pos < len(data):
-            byte = data[pos]; pos += 1
+        while True:
+            if pos >= len(data):
+                raise NeedMoreData
+            byte = data[pos]
+            pos += 1
             addr |= (byte >> 1) << shift
             shift += 7
-            if byte & 0x01:  # last byte of address
-                break
-        return addr, pos
+            if byte & 0x01:
+                return addr, pos
 
-    def _parse_apdu(self, apdu: bytes) -> ParseResult:
-        """
-        Parse DLMS APDU (Data-Notification = tag 0x0F).
-
-        XT211 frame structure:
-          0F                    - Data-Notification tag
-          [4B invoke-id]        - MSB set = data frame, clear = push-setup (skip)
-          00                    - datetime absent
-          02 02                 - outer structure(2)
-            16 [push_type]      - elem[0]: enum (push type, ignore)
-            01 [N]              - elem[1]: array(N captured objects)
-              [N x object]      - see _parse_xt211_object
-
-        Each captured object (11-byte header + type-tagged value):
-          02 02 00              - structure prefix (3 bytes, ignored)
-          [class_id]            - 1 byte DLMS class ID
-          [A B C D E F]         - 6-byte raw OBIS (NO type tag!)
-          [attr_idx]            - 1 byte attribute index (ignored)
-          [type][value bytes]   - standard DLMS type-tagged value
-        """
+    def _parse_apdu_with_length(self, apdu: bytes) -> tuple[ParseResult, int]:
         if not apdu:
-            return ParseResult(success=False, objects=[], error="Empty APDU")
-
+            raise NeedMoreData
         if apdu[0] != 0x0F:
-            return ParseResult(
-                success=False, objects=[],
-                error=f"Unexpected APDU tag 0x{apdu[0]:02X} (expected 0x0F)"
-            )
-
+            raise ValueError(f"Unexpected APDU tag 0x{apdu[0]:02X}")
         if len(apdu) < 6:
-            return ParseResult(success=False, objects=[], error="APDU too short")
+            raise NeedMoreData
 
         pos = 1
-        invoke_id = struct.unpack_from(">I", apdu, pos)[0]; pos += 4
-        _LOGGER.debug("Invoke ID: 0x%08X", invoke_id)
+        invoke_id = struct.unpack_from(">I", apdu, pos)[0]
+        pos += 4
+        _LOGGER.debug("XT211 invoke_id=0x%08X", invoke_id)
 
-        # Skip push-setup frames (invoke_id MSB = 0)
-        #if not (invoke_id & 0x80000000):
-        #   _LOGGER.debug("Push-setup frame, skipping")
-        #    return ParseResult(success=True, objects=[])
+        if pos >= len(apdu):
+            raise NeedMoreData
 
-        # Datetime: 0x09 = octet-string, 0x00 = absent
-        if pos < len(apdu) and apdu[pos] == 0x09:
+        if apdu[pos] == DLMS_TYPE_OCTET_STRING:
             pos += 1
-            dt_len = apdu[pos]; pos += 1 + dt_len
-        elif pos < len(apdu) and apdu[pos] == 0x00:
+            dt_len, pos = self._decode_length(apdu, pos)
+            self._require(apdu, pos, dt_len)
+            pos += dt_len
+        elif apdu[pos] == DLMS_TYPE_NULL:
             pos += 1
 
-        # Outer structure(2): skip tag + count
-        if pos + 2 > len(apdu) or apdu[pos] != 0x02:
-            return ParseResult(success=True, objects=[])
-        pos += 2  # 02 02
+        self._require(apdu, pos, 2)
+        if apdu[pos] != DLMS_TYPE_STRUCTURE:
+            return ParseResult(success=True, objects=[]), pos
+        structure_count = apdu[pos + 1]
+        pos += 2
+        if structure_count < 2:
+            return ParseResult(success=True, objects=[]), pos
 
-        # Element[0]: enum = push type (skip 2 bytes: 16 XX)
-        if pos < len(apdu) and apdu[pos] == 0x16:
+        if pos >= len(apdu):
+            raise NeedMoreData
+        if apdu[pos] == DLMS_TYPE_ENUM:
+            self._require(apdu, pos, 2)
             pos += 2
+        else:
+            _, pos = self._decode_value(apdu, pos)
 
-        # Element[1]: array of captured objects
-        if pos >= len(apdu) or apdu[pos] != 0x01:
-            return ParseResult(success=True, objects=[])
+        if pos >= len(apdu):
+            raise NeedMoreData
+        if apdu[pos] != DLMS_TYPE_ARRAY:
+            return ParseResult(success=True, objects=[]), pos
         pos += 1
 
         array_count, pos = self._decode_length(apdu, pos)
-        _LOGGER.debug("Array count: %d objects", array_count)
+        objects: list[DLMSObject] = []
+        for _ in range(array_count):
+            obj, pos = self._parse_xt211_object(apdu, pos)
+            if obj is not None:
+                objects.append(obj)
 
-        objects = []
-        for i in range(array_count):
-            if pos + 11 > len(apdu):
-                break
-            try:
-                obj, pos = self._parse_xt211_object(apdu, pos)
-                if obj:
-                    objects.append(obj)
-                    _LOGGER.debug("OBIS %s = %s %s", obj.obis, obj.value, obj.unit)
-            except Exception as exc:
-                _LOGGER.debug("Error parsing object %d at pos %d: %s", i, pos, exc)
-                break
-
-        return ParseResult(success=True, objects=objects)
+        return ParseResult(success=True, objects=objects), pos
 
     def _parse_xt211_object(self, data: bytes, pos: int) -> tuple[DLMSObject | None, int]:
-        """
-        Parse one captured object from XT211 push notification.
-
-        Format per object:
-          02 02 00   - 3-byte structure prefix (ignored)
-          [class_id] - 1 byte
-          [A B C D E F] - 6-byte raw OBIS (no type tag)
-          [attr_idx] - 1 byte (ignored)
-          [type][value] - DLMS type-tagged value
-        """
-        if data[pos] != 0x02:
-            _LOGGER.debug("Expected 0x02 at pos %d, got 0x%02X", pos, data[pos])
-            return None, pos + 1
-
-        pos += 3  # skip: 02 02 00
-
-        # Class ID
-        pos += 1  # class_id (not needed for value extraction)
-
-        # Raw OBIS (6 bytes, no type tag)
-        if pos + 6 > len(data):
-            return None, pos
-        obis_raw = data[pos:pos+6]; pos += 6
-        obis_str = self._format_obis(obis_raw)
-
-        # Attribute index (skip)
+        self._require(data, pos, 1)
+        if data[pos] != DLMS_TYPE_STRUCTURE:
+            raise ValueError(f"Expected object structure at {pos}, got 0x{data[pos]:02X}")
         pos += 1
 
-        # Type-tagged value
-        value, pos = self._decode_value(data, pos)
+        count, pos = self._decode_length(data, pos)
+        if count < 1:
+            raise ValueError(f"Unexpected object element count {count}")
 
-        # Convert bytes to string for text objects
-        if isinstance(value, (bytes, bytearray)):
-            try:
-                value = value.decode("ascii", errors="replace").strip("\x00")
-            except Exception:
-                value = value.hex()
+        # XT211 measurement objects use a raw descriptor layout:
+        # 02 02 00 [class_id_hi class_id_lo] [6B OBIS] [attr_idx] [typed value]
+        if pos < len(data) and data[pos] == 0x00:
+            if pos + 10 > len(data):
+                raise NeedMoreData
+            class_id = int.from_bytes(data[pos:pos + 2], "big")
+            pos += 2
+            obis_raw = bytes(data[pos:pos + 6])
+            pos += 6
+            _attr_idx = data[pos]
+            pos += 1
+            value, pos = self._decode_value(data, pos)
 
-        meta = OBIS_DESCRIPTIONS.get(obis_str, {})
-        return DLMSObject(
-            obis=obis_str,
-            value=value,
-            unit=meta.get("unit", ""),
-            scaler=0,
-        ), pos
+            if isinstance(value, (bytes, bytearray)):
+                try:
+                    value = bytes(value).decode("ascii", errors="replace").strip("\x00")
+                except Exception:
+                    value = bytes(value).hex()
 
+            obis = self._format_obis(obis_raw)
+            meta = OBIS_DESCRIPTIONS.get(obis, {})
+            _LOGGER.debug(
+                "Parsed XT211 object class_id=%s obis=%s value=%r unit=%s",
+                class_id,
+                obis,
+                value,
+                meta.get("unit", ""),
+            )
+            return DLMSObject(
+                obis=obis,
+                value=value,
+                unit=meta.get("unit", ""),
+                scaler=0,
+            ), pos
+
+        # Short housekeeping frames use simple typed structures without OBIS.
+        # Consume them cleanly and ignore them.
+        last_value: Any = None
+        for _ in range(count):
+            last_value, pos = self._decode_value(data, pos)
+        _LOGGER.debug("Ignoring non-measurement structure value=%r", last_value)
+        return None, pos
 
     def _decode_value(self, data: bytes, pos: int) -> tuple[Any, int]:
-        """Recursively decode a DLMS typed value. Returns (value, new_pos)."""
-        if pos >= len(data):
-            return None, pos
-
-        dtype = data[pos]; pos += 1
+        self._require(data, pos, 1)
+        dtype = data[pos]
+        pos += 1
 
         if dtype == DLMS_TYPE_NULL:
             return None, pos
-        elif dtype == DLMS_TYPE_BOOL:
+        if dtype == DLMS_TYPE_BOOL:
+            self._require(data, pos, 1)
             return bool(data[pos]), pos + 1
-        elif dtype == DLMS_TYPE_INT8:
+        if dtype == DLMS_TYPE_INT8:
+            self._require(data, pos, 1)
             return struct.unpack_from(">b", data, pos)[0], pos + 1
-        elif dtype == DLMS_TYPE_UINT8:
+        if dtype == DLMS_TYPE_UINT8 or dtype == DLMS_TYPE_ENUM:
+            self._require(data, pos, 1)
             return data[pos], pos + 1
-        elif dtype == 0x16:  # enum = uint8
-            return data[pos], pos + 1
-        elif dtype == DLMS_TYPE_INT16:
+        if dtype == DLMS_TYPE_INT16:
+            self._require(data, pos, 2)
             return struct.unpack_from(">h", data, pos)[0], pos + 2
-        elif dtype == DLMS_TYPE_UINT16:
+        if dtype == DLMS_TYPE_UINT16:
+            self._require(data, pos, 2)
             return struct.unpack_from(">H", data, pos)[0], pos + 2
-        elif dtype == DLMS_TYPE_INT32:
+        if dtype == DLMS_TYPE_INT32:
+            self._require(data, pos, 4)
             return struct.unpack_from(">i", data, pos)[0], pos + 4
-        elif dtype == DLMS_TYPE_UINT32:
+        if dtype == DLMS_TYPE_UINT32:
+            self._require(data, pos, 4)
             return struct.unpack_from(">I", data, pos)[0], pos + 4
-        elif dtype == DLMS_TYPE_INT64:
+        if dtype == DLMS_TYPE_INT64:
+            self._require(data, pos, 8)
             return struct.unpack_from(">q", data, pos)[0], pos + 8
-        elif dtype == DLMS_TYPE_UINT64:
+        if dtype == DLMS_TYPE_UINT64:
+            self._require(data, pos, 8)
             return struct.unpack_from(">Q", data, pos)[0], pos + 8
-        elif dtype == DLMS_TYPE_FLOAT32:
+        if dtype == DLMS_TYPE_FLOAT32:
+            self._require(data, pos, 4)
             return struct.unpack_from(">f", data, pos)[0], pos + 4
-        elif dtype == DLMS_TYPE_FLOAT64:
+        if dtype == DLMS_TYPE_FLOAT64:
+            self._require(data, pos, 8)
             return struct.unpack_from(">d", data, pos)[0], pos + 8
-        elif dtype in (DLMS_TYPE_OCTET_STRING, DLMS_TYPE_VISIBLE_STRING):
+        if dtype in (DLMS_TYPE_OCTET_STRING, DLMS_TYPE_VISIBLE_STRING):
             length, pos = self._decode_length(data, pos)
-            raw_bytes = data[pos:pos+length]
+            self._require(data, pos, length)
+            raw = data[pos:pos + length]
             pos += length
             if dtype == DLMS_TYPE_VISIBLE_STRING:
-                try:
-                    return raw_bytes.decode("ascii", errors="replace"), pos
-                except Exception:
-                    return raw_bytes.hex(), pos
-            return raw_bytes, pos
-        elif dtype in (DLMS_TYPE_ARRAY, DLMS_TYPE_STRUCTURE, DLMS_TYPE_COMPACT_ARRAY):
+                return raw.decode("ascii", errors="replace"), pos
+            return bytes(raw), pos
+        if dtype in (DLMS_TYPE_ARRAY, DLMS_TYPE_STRUCTURE, DLMS_TYPE_COMPACT_ARRAY):
             count, pos = self._decode_length(data, pos)
-            items = []
+            items: list[Any] = []
             for _ in range(count):
-                val, pos = self._decode_value(data, pos)
-                items.append(val)
+                item, pos = self._decode_value(data, pos)
+                items.append(item)
             return items, pos
-        else:
-            _LOGGER.debug("Unknown DLMS type 0x%02X at pos %d, skipping", dtype, pos)
-            return None, pos
+
+        raise ValueError(f"Unknown DLMS type 0x{dtype:02X} at pos {pos - 1}")
 
     def _decode_length(self, data: bytes, pos: int) -> tuple[int, int]:
-        """Decode BER-style length field."""
-        first = data[pos]; pos += 1
+        self._require(data, pos, 1)
+        first = data[pos]
+        pos += 1
         if first < 0x80:
             return first, pos
         num_bytes = first & 0x7F
+        self._require(data, pos, num_bytes)
         length = 0
         for _ in range(num_bytes):
-            length = (length << 8) | data[pos]; pos += 1
+            length = (length << 8) | data[pos]
+            pos += 1
         return length, pos
 
-    
-        """Convert 6 raw bytes to OBIS string notation A-B:C.D.E.F"""
+    def _require(self, data: bytes, pos: int, count: int) -> None:
+        if pos + count > len(data):
+            raise NeedMoreData
+
+    def _find_apdu_start(self, data: bytes) -> int:
+        try:
+            return data.index(0x0F)
+        except ValueError:
+            return -1
+
+    def _format_obis(self, raw: bytes) -> str:
         if len(raw) != 6:
             return raw.hex()
         a, b, c, d, e, f = raw
         return f"{a}-{b}:{c}.{d}.{e}.{f}"
 
 
-# ---------------------------------------------------------------------------
-# Convenience: known OBIS codes for the XT211
-# ---------------------------------------------------------------------------
-
-OBIS_DESCRIPTIONS: dict[str, dict] = {
-    # --- Idx 1: COSEM logical device name ---
-    "0-0:42.0.0.255":  {"name": "Název zařízení",                    "unit": "",    "class": "text"},
-
-    # --- Idx 3: Serial number ---
-    "0-0:96.1.0.255":  {"name": "Výrobní číslo",                     "unit": "",    "class": "text"},
-
-    # --- Idx 4: Disconnector ---
-    "0-0:96.3.10.255": {"name": "Stav odpojovače",                   "unit": "",    "class": "binary"},
-
-    # --- Idx 5: Power limiter ---
-    "0-0:17.0.0.255":  {"name": "Limitér",                           "unit": "W",   "class": "power"},
-
-    # --- Idx 6–11: Relays R1–R6 ---
-    "0-1:96.3.10.255": {"name": "Stav relé R1",                      "unit": "",    "class": "binary"},
-    "0-2:96.3.10.255": {"name": "Stav relé R2",                      "unit": "",    "class": "binary"},
-    "0-3:96.3.10.255": {"name": "Stav relé R3",                      "unit": "",    "class": "binary"},
-    "0-4:96.3.10.255": {"name": "Stav relé R4",                      "unit": "",    "class": "binary"},
-    "0-5:96.3.10.255": {"name": "Stav relé R5",                      "unit": "",    "class": "binary"},
-    "0-6:96.3.10.255": {"name": "Stav relé R6",                      "unit": "",    "class": "binary"},
-
-    # --- Idx 12: Active tariff ---
-    "0-0:96.14.0.255": {"name": "Aktuální tarif",                    "unit": "",    "class": "text"},
-
-    # --- Idx 13–16: Instant power import (odběr) ---
-    "1-0:1.7.0.255":   {"name": "Okamžitý příkon odběru celkem",     "unit": "W",   "class": "power"},
-    "1-0:21.7.0.255":  {"name": "Okamžitý příkon odběru L1",         "unit": "W",   "class": "power"},
-    "1-0:41.7.0.255":  {"name": "Okamžitý příkon odběru L2",         "unit": "W",   "class": "power"},
-    "1-0:61.7.0.255":  {"name": "Okamžitý příkon odběru L3",         "unit": "W",   "class": "power"},
-
-    # --- Idx 17–20: Instant power export (dodávka / FVE) ---
-    "1-0:2.7.0.255":   {"name": "Okamžitý výkon dodávky celkem",     "unit": "W",   "class": "power"},
-    "1-0:22.7.0.255":  {"name": "Okamžitý výkon dodávky L1",         "unit": "W",   "class": "power"},
-    "1-0:42.7.0.255":  {"name": "Okamžitý výkon dodávky L2",         "unit": "W",   "class": "power"},
-    "1-0:62.7.0.255":  {"name": "Okamžitý výkon dodávky L3",         "unit": "W",   "class": "power"},
-
-    # --- Idx 21–25: Cumulative energy import (odběr kWh) ---
-    "1-0:1.8.0.255":   {"name": "Spotřeba energie celkem",           "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.1.255":   {"name": "Spotřeba energie T1",               "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.2.255":   {"name": "Spotřeba energie T2",               "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.3.255":   {"name": "Spotřeba energie T3",               "unit": "Wh",  "class": "energy"},
-    "1-0:1.8.4.255":   {"name": "Spotřeba energie T4",               "unit": "Wh",  "class": "energy"},
-
-    # --- Idx 26: Cumulative energy export (dodávka kWh) ---
-    "1-0:2.8.0.255":   {"name": "Dodávka energie celkem",            "unit": "Wh",  "class": "energy"},
-
-    # --- Idx 27: Consumer message ---
-    "0-0:96.13.0.255": {"name": "Zpráva pro zákazníka",              "unit": "",    "class": "text"},
+OBIS_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    "0-0:42.0.0.255": {"name": "Název zařízení", "unit": "", "class": "text"},
+    "0-0:96.1.0.255": {"name": "Výrobní číslo", "unit": "", "class": "text"},
+    "0-0:96.1.1.255": {"name": "Výrobní číslo", "unit": "", "class": "text"},
+    "0-0:96.3.10.255": {"name": "Stav odpojovače", "unit": "", "class": "binary"},
+    "0-0:17.0.0.255": {"name": "Limitér", "unit": "W", "class": "power"},
+    "0-1:96.3.10.255": {"name": "Stav relé R1", "unit": "", "class": "binary"},
+    "0-2:96.3.10.255": {"name": "Stav relé R2", "unit": "", "class": "binary"},
+    "0-3:96.3.10.255": {"name": "Stav relé R3", "unit": "", "class": "binary"},
+    "0-4:96.3.10.255": {"name": "Stav relé R4", "unit": "", "class": "binary"},
+    "0-5:96.3.10.255": {"name": "Stav relé R5", "unit": "", "class": "binary"},
+    "0-6:96.3.10.255": {"name": "Stav relé R6", "unit": "", "class": "binary"},
+    "0-0:96.14.0.255": {"name": "Aktuální tarif", "unit": "", "class": "text"},
+    "1-0:1.7.0.255": {"name": "Okamžitý příkon odběru celkem", "unit": "W", "class": "power"},
+    "1-0:21.7.0.255": {"name": "Okamžitý příkon odběru L1", "unit": "W", "class": "power"},
+    "1-0:41.7.0.255": {"name": "Okamžitý příkon odběru L2", "unit": "W", "class": "power"},
+    "1-0:61.7.0.255": {"name": "Okamžitý příkon odběru L3", "unit": "W", "class": "power"},
+    "1-0:2.7.0.255": {"name": "Okamžitý výkon dodávky celkem", "unit": "W", "class": "power"},
+    "1-0:22.7.0.255": {"name": "Okamžitý výkon dodávky L1", "unit": "W", "class": "power"},
+    "1-0:42.7.0.255": {"name": "Okamžitý výkon dodávky L2", "unit": "W", "class": "power"},
+    "1-0:62.7.0.255": {"name": "Okamžitý výkon dodávky L3", "unit": "W", "class": "power"},
+    "1-0:1.8.0.255": {"name": "Spotřeba energie celkem", "unit": "Wh", "class": "energy"},
+    "1-0:1.8.1.255": {"name": "Spotřeba energie T1", "unit": "Wh", "class": "energy"},
+    "1-0:1.8.2.255": {"name": "Spotřeba energie T2", "unit": "Wh", "class": "energy"},
+    "1-0:1.8.3.255": {"name": "Spotřeba energie T3", "unit": "Wh", "class": "energy"},
+    "1-0:1.8.4.255": {"name": "Spotřeba energie T4", "unit": "Wh", "class": "energy"},
+    "1-0:2.8.0.255": {"name": "Dodávka energie celkem", "unit": "Wh", "class": "energy"},
+    "0-0:96.13.0.255": {"name": "Zpráva pro zákazníka", "unit": "", "class": "text"},
 }

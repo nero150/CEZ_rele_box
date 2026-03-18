@@ -1,50 +1,42 @@
-"""Config flow for XT211 HAN integration.
-
-Discovery order:
-  1. DHCP discovery  – automatic, triggered by HA when USR-DR134 appears on network
-  2. Network scan    – user clicks "Search network" in the UI
-  3. Manual entry    – user types IP + port manually (always available as fallback)
-"""
+"""Config flow for XT211 HAN integration."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import socket
-import struct
-from ipaddress import IPv4Network, IPv4Address
+from ipaddress import IPv4Network
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components import dhcp
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_NAME
+from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.data_entry_flow import FlowResult
-import homeassistant.helpers.config_validation as cv
 
 from .const import (
-    DOMAIN,
-    DEFAULT_PORT,
-    DEFAULT_NAME,
-    CONF_PHASES,
     CONF_HAS_FVE,
-    CONF_TARIFFS,
+    CONF_PHASES,
     CONF_RELAY_COUNT,
+    CONF_TARIFFS,
+    DEFAULT_NAME,
+    DEFAULT_PORT,
+    DOMAIN,
     PHASES_1,
     PHASES_3,
-    TARIFFS_1,
-    TARIFFS_2,
-    TARIFFS_4,
     RELAYS_0,
     RELAYS_4,
     RELAYS_6,
+    TARIFFS_1,
+    TARIFFS_2,
+    TARIFFS_4,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-# Known MAC prefixes for USR IOT devices (USR-DR134)
 USR_IOT_MAC_PREFIXES = ("d8b04c", "b4e62d")
+MANUAL_CHOICE = "__manual__"
 
 STEP_CONNECTION_SCHEMA = vol.Schema(
     {
@@ -78,17 +70,9 @@ STEP_METER_SCHEMA = vol.Schema(
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 async def _test_connection(host: str, port: int, timeout: float = 5.0) -> str | None:
-    """Try TCP connection. Returns error key or None on success."""
     try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port),
-            timeout=timeout,
-        )
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
         writer.close()
         await writer.wait_closed()
         return None
@@ -96,83 +80,55 @@ async def _test_connection(host: str, port: int, timeout: float = 5.0) -> str | 
         return "cannot_connect"
     except OSError:
         return "cannot_connect"
-    except Exception:
+    except Exception:  # pragma: no cover - defensive
         return "unknown"
 
 
 async def _scan_network(port: int, timeout: float = 1.0) -> list[str]:
-    """
-    Scan the local network for open TCP port.
-    Returns list of IP addresses that responded.
-    """
-    # Get real local IP by connecting to a public address (no data sent)
     local_ip = "192.168.1.1"
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.settimeout(0)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(0)
+            sock.connect(("8.8.8.8", 80))
+            local_ip = sock.getsockname()[0]
     except Exception:
         try:
             local_ip = socket.gethostbyname(socket.gethostname())
         except Exception:
             pass
 
-    _LOGGER.debug("XT211 scan: local IP detected as %s", local_ip)
-
-    # Fallback if we still got loopback
     if local_ip.startswith("127.") or local_ip == "0.0.0.0":
         local_ip = "192.168.1.1"
-        _LOGGER.warning("XT211 scan: loopback detected, falling back to %s", local_ip)
 
     try:
         network = IPv4Network(f"{local_ip}/24", strict=False)
     except ValueError:
         network = IPv4Network("192.168.1.0/24", strict=False)
 
-    _LOGGER.debug("XT211 scan: scanning %s on port %d", network, port)
-
     found: list[str] = []
 
     async def _probe(ip: str) -> None:
         try:
-            _, writer = await asyncio.wait_for(
-                asyncio.open_connection(ip, port),
-                timeout=timeout,
-            )
+            _, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout=timeout)
             writer.close()
             try:
                 await writer.wait_closed()
             except Exception:
                 pass
             found.append(ip)
-            _LOGGER.debug("XT211 scan: found device at %s:%d", ip, port)
         except Exception:
             pass
 
-    # Probe all hosts in /24 concurrently
-    hosts = [str(h) for h in network.hosts()]
-    # Split into batches to avoid overwhelming the network stack
-    batch_size = 50
-    for i in range(0, len(hosts), batch_size):
-        batch = hosts[i:i + batch_size]
-        await asyncio.gather(*[_probe(ip) for ip in batch])
+    hosts = [str(host) for host in network.hosts()]
+    for index in range(0, len(hosts), 50):
+        await asyncio.gather(*(_probe(ip) for ip in hosts[index:index + 50]))
 
-    return sorted(found)
+    found.sort()
+    _LOGGER.debug("XT211 scan found %d host(s) on port %d: %s", len(found), port, found)
+    return found
 
-
-# ---------------------------------------------------------------------------
-# Config Flow
-# ---------------------------------------------------------------------------
 
 class XT211HANConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """
-    Three-path config flow:
-      - DHCP discovery  (automatic)
-      - Network scan    (semi-automatic)
-      - Manual entry    (always available)
-    """
-
     VERSION = 1
 
     def __init__(self) -> None:
@@ -181,31 +137,21 @@ class XT211HANConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_port: int = DEFAULT_PORT
         self._scan_results: list[str] = []
 
-    # ------------------------------------------------------------------
-    # Path 1 – DHCP discovery (triggered automatically by HA)
-    # ------------------------------------------------------------------
-
     async def async_step_dhcp(self, discovery_info: dhcp.DhcpServiceInfo) -> FlowResult:
-        """Handle DHCP discovery of a USR IOT device."""
         mac = discovery_info.macaddress.replace(":", "").lower()
         if not any(mac.startswith(prefix) for prefix in USR_IOT_MAC_PREFIXES):
             return self.async_abort(reason="not_supported")
 
         ip = discovery_info.ip
-        _LOGGER.info("XT211 HAN: DHCP discovered USR IOT device at %s (MAC %s)", ip, mac)
-
-        # Check not already configured
         await self.async_set_unique_id(f"{ip}:{DEFAULT_PORT}")
         self._abort_if_unique_id_configured(updates={CONF_HOST: ip})
 
         self._discovered_host = ip
         self._discovered_port = DEFAULT_PORT
+        _LOGGER.info("XT211 HAN: DHCP discovered USR IOT device at %s (MAC %s)", ip, mac)
         return await self.async_step_dhcp_confirm()
 
-    async def async_step_dhcp_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Ask user to confirm the DHCP-discovered device."""
+    async def async_step_dhcp_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
             error = await _test_connection(self._discovered_host, self._discovered_port)
             if error:
@@ -232,19 +178,9 @@ class XT211HANConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    # ------------------------------------------------------------------
-    # Path 2 + 3 – User-initiated: scan or manual
-    # ------------------------------------------------------------------
-
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """First screen: choose between scan or manual entry."""
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
-            if user_input.get("method") == "scan":
-                return await self.async_step_scan()
-            else:
-                return await self.async_step_manual()
+            return await (self.async_step_scan() if user_input.get("method") == "scan" else self.async_step_manual())
 
         return self.async_show_form(
             step_id="user",
@@ -260,16 +196,12 @@ class XT211HANConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         )
 
-    # ------------------------------------------------------------------
-    # Path 2 – Network scan
-    # ------------------------------------------------------------------
-
-    async def async_step_scan(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Scan the local network for devices with the configured port open."""
+    async def async_step_scan(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
             host = user_input[CONF_HOST]
+            if host == MANUAL_CHOICE:
+                return await self.async_step_manual()
+
             port = user_input.get(CONF_PORT, DEFAULT_PORT)
             name = user_input.get(CONF_NAME, DEFAULT_NAME)
 
@@ -280,49 +212,38 @@ class XT211HANConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if error:
                 return self.async_show_form(
                     step_id="scan",
-                    data_schema=self._scan_schema(port),
+                    data_schema=self._scan_schema(port, include_choices=not self._scan_results == []),
                     errors={"base": error},
                 )
 
-            self._connection_data = {
-                CONF_HOST: host,
-                CONF_PORT: port,
-                CONF_NAME: name,
-            }
+            self._connection_data = {CONF_HOST: host, CONF_PORT: port, CONF_NAME: name}
             return await self.async_step_meter()
 
-        # Run the scan
-        _LOGGER.debug("XT211 HAN: scanning network for port %d", DEFAULT_PORT)
         self._scan_results = await _scan_network(DEFAULT_PORT)
-        _LOGGER.debug("XT211 HAN: scan found %d device(s): %s", len(self._scan_results), self._scan_results)
-
         if not self._scan_results:
-            # Nothing found – fall through to manual with a warning
             return self.async_show_form(
                 step_id="scan",
-                data_schema=self._scan_schema(DEFAULT_PORT),
+                data_schema=self._scan_schema(DEFAULT_PORT, include_choices=False),
                 errors={"base": "no_devices_found"},
             )
 
-        # Build selector: found IPs + option to type manually
-        choices = {ip: f"{ip}:{DEFAULT_PORT}" for ip in self._scan_results}
-        choices["manual"] = "✏️ Zadat jinak ručně"
-
         return self.async_show_form(
             step_id="scan",
-            data_schema=self._scan_schema(DEFAULT_PORT, choices),
+            data_schema=self._scan_schema(DEFAULT_PORT, include_choices=True),
         )
 
-    def _scan_schema(
-        self, port: int, choices: dict | None = None
-    ) -> vol.Schema:
-        if choices:
+    def _scan_schema(self, port: int, include_choices: bool) -> vol.Schema:
+        if include_choices:
+            choices = {ip: f"{ip}:{port}" for ip in self._scan_results}
+            choices[MANUAL_CHOICE] = "✏️ Zadat IP adresu ručně"
             return vol.Schema(
                 {
                     vol.Required(CONF_HOST): vol.In(choices),
+                    vol.Optional(CONF_PORT, default=port): int,
                     vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
                 }
             )
+
         return vol.Schema(
             {
                 vol.Required(CONF_HOST): str,
@@ -331,16 +252,8 @@ class XT211HANConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-    # ------------------------------------------------------------------
-    # Path 3 – Manual entry
-    # ------------------------------------------------------------------
-
-    async def async_step_manual(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Manual IP + port entry."""
+    async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
-
         if user_input is not None:
             host = user_input[CONF_HOST]
             port = user_input[CONF_PORT]
@@ -353,38 +266,17 @@ class XT211HANConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
-                self._connection_data = {
-                    CONF_HOST: host,
-                    CONF_PORT: port,
-                    CONF_NAME: name,
-                }
+                self._connection_data = {CONF_HOST: host, CONF_PORT: port, CONF_NAME: name}
                 return await self.async_step_meter()
 
-        return self.async_show_form(
-            step_id="manual",
-            data_schema=STEP_CONNECTION_SCHEMA,
-            errors=errors,
-        )
+        return self.async_show_form(step_id="manual", data_schema=STEP_CONNECTION_SCHEMA, errors=errors)
 
-    # ------------------------------------------------------------------
-    # Step: meter configuration (shared by all paths)
-    # ------------------------------------------------------------------
-
-    async def async_step_meter(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Meter type, FVE, tariffs, relays."""
+    async def async_step_meter(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
             data = {**self._connection_data, **user_input}
             name = data.get(CONF_NAME, DEFAULT_NAME)
             host = data[CONF_HOST]
             port = data[CONF_PORT]
-            return self.async_create_entry(
-                title=f"{name} ({host}:{port})",
-                data=data,
-            )
+            return self.async_create_entry(title=f"{name} ({host}:{port})", data=data)
 
-        return self.async_show_form(
-            step_id="meter",
-            data_schema=STEP_METER_SCHEMA,
-        )
+        return self.async_show_form(step_id="meter", data_schema=STEP_METER_SCHEMA)
