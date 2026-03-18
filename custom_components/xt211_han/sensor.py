@@ -58,15 +58,22 @@ SENSOR_META: dict[str, dict] = {
 }
 
 # OBIS codes that send text values (not numeric)
-TEXT_OBIS = {"0-0:96.1.1.255", "0-0:96.14.0.255"}
+TEXT_OBIS = {
+    "0-0:42.0.0.255",   # COSEM logical device name
+    "0-0:96.1.0.255",   # Serial number
+    "0-0:96.14.0.255",  # Current tariff
+    "0-0:96.13.0.255",  # Consumer message
+}
 
 # OBIS codes that are binary (on/off)
 BINARY_OBIS = {
-    "0-0:96.3.10.255",
-    "0-1:96.3.10.255",
-    "0-2:96.3.10.255",
-    "0-3:96.3.10.255",
-    "0-4:96.3.10.255",
+    "0-0:96.3.10.255",  # Disconnector
+    "0-1:96.3.10.255",  # Relay R1
+    "0-2:96.3.10.255",  # Relay R2
+    "0-3:96.3.10.255",  # Relay R3
+    "0-4:96.3.10.255",  # Relay R4
+    "0-5:96.3.10.255",  # Relay R5
+    "0-6:96.3.10.255",  # Relay R6
 }
 
 

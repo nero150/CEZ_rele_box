@@ -73,49 +73,51 @@ Napájení USR-DR134: 5–24V DC (např. z USB adaptéru přes step-up, nebo 12V
 
 ---
 
-## Dostupné entity
+## Dostupné entity (27 celkem)
 
 ### 📊 Výkon (W) – okamžité hodnoty
-| Název entity | OBIS kód |
-|---|---|
-| Active Power Consumption | `1-0:1.7.0.255` |
-| Active Power Consumption L1 | `1-0:21.7.0.255` |
-| Active Power Consumption L2 | `1-0:41.7.0.255` |
-| Active Power Consumption L3 | `1-0:61.7.0.255` |
-| Active Power Delivery | `1-0:2.7.0.255` |
-| Active Power Delivery L1 | `1-0:22.7.0.255` |
-| Active Power Delivery L2 | `1-0:42.7.0.255` |
-| Active Power Delivery L3 | `1-0:62.7.0.255` |
-| Limiter Value | `0-0:17.0.0.255` |
+| # | Název entity | OBIS kód |
+|---|---|---|
+| 5 | Power Limiter Value | `0-0:17.0.0.255` |
+| 13 | Active Power Import | `1-0:1.7.0.255` |
+| 14 | Active Power Import L1 | `1-0:21.7.0.255` |
+| 15 | Active Power Import L2 | `1-0:41.7.0.255` |
+| 16 | Active Power Import L3 | `1-0:61.7.0.255` |
+| 17 | Active Power Export | `1-0:2.7.0.255` |
+| 18 | Active Power Export L1 | `1-0:22.7.0.255` |
+| 19 | Active Power Export L2 | `1-0:42.7.0.255` |
+| 20 | Active Power Export L3 | `1-0:62.7.0.255` |
 
 ### ⚡ Energie (kWh) – kumulativní
-| Název entity | OBIS kód |
-|---|---|
-| Energy Consumed | `1-0:1.8.0.255` |
-| Energy Consumed T1 | `1-0:1.8.1.255` |
-| Energy Consumed T2 | `1-0:1.8.2.255` |
-| Energy Consumed T3 | `1-0:1.8.3.255` |
-| Energy Consumed T4 | `1-0:1.8.4.255` |
-| Energy Delivered | `1-0:2.8.0.255` |
-| Energy Delivered T1 | `1-0:2.8.1.255` |
-| Energy Delivered T2 | `1-0:2.8.2.255` |
-| Energy Delivered T3 | `1-0:2.8.3.255` |
-| Energy Delivered T4 | `1-0:2.8.4.255` |
+| # | Název entity | OBIS kód |
+|---|---|---|
+| 21 | Energy Import | `1-0:1.8.0.255` |
+| 22 | Energy Import T1 | `1-0:1.8.1.255` |
+| 23 | Energy Import T2 | `1-0:1.8.2.255` |
+| 24 | Energy Import T3 | `1-0:1.8.3.255` |
+| 25 | Energy Import T4 | `1-0:1.8.4.255` |
+| 26 | Energy Export | `1-0:2.8.0.255` |
 
 ### 🔀 Binární senzory (zapnuto/vypnuto)
-| Název entity | OBIS kód |
-|---|---|
-| Disconnector Status | `0-0:96.3.10.255` |
-| Relay R1 Status | `0-1:96.3.10.255` |
-| Relay R2 Status | `0-2:96.3.10.255` |
-| Relay R3 Status | `0-3:96.3.10.255` |
-| Relay R4 Status | `0-4:96.3.10.255` |
+| # | Název entity | OBIS kód |
+|---|---|---|
+| 4 | Disconnector Status | `0-0:96.3.10.255` |
+| 6 | Relay R1 Status | `0-1:96.3.10.255` |
+| 7 | Relay R2 Status | `0-2:96.3.10.255` |
+| 8 | Relay R3 Status | `0-3:96.3.10.255` |
+| 9 | Relay R4 Status | `0-4:96.3.10.255` |
+| 10 | Relay R5 Status | `0-5:96.3.10.255` |
+| 11 | Relay R6 Status | `0-6:96.3.10.255` |
 
 ### 📋 Diagnostika (text)
-| Název entity | OBIS kód |
-|---|---|
-| Serial Number | `0-0:96.1.1.255` |
-| Current Tariff | `0-0:96.14.0.255` |
+| # | Název entity | OBIS kód |
+|---|---|---|
+| 1 | COSEM Logical Device Name | `0-0:42.0.0.255` |
+| 3 | Serial Number | `0-0:96.1.0.255` |
+| 12 | Current Tariff | `0-0:96.14.0.255` |
+| 27 | Consumer Message | `0-0:96.13.0.255` |
+
+> ℹ️ Idx 2 (`0-2:25.9.0.255` – Push setup) je interní konfigurační objekt elektroměru, neobsahuje měřená data.
 
 ---
 
