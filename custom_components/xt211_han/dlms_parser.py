@@ -292,9 +292,9 @@ class DLMSParser:
         _LOGGER.debug("Invoke ID: 0x%08X", invoke_id)
 
         # Skip push-setup frames (invoke_id MSB = 0)
-        if not (invoke_id & 0x80000000):
-            _LOGGER.debug("Push-setup frame, skipping")
-            return ParseResult(success=True, objects=[])
+        #if not (invoke_id & 0x80000000):
+        #   _LOGGER.debug("Push-setup frame, skipping")
+        #    return ParseResult(success=True, objects=[])
 
         # Datetime: 0x09 = octet-string, 0x00 = absent
         if pos < len(apdu) and apdu[pos] == 0x09:
