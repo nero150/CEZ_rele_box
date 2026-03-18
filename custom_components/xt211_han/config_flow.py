@@ -100,21 +100,37 @@ async def _test_connection(host: str, port: int, timeout: float = 5.0) -> str | 
         return "unknown"
 
 
-async def _scan_network(port: int, timeout: float = 0.5) -> list[str]:
+async def _scan_network(port: int, timeout: float = 1.0) -> list[str]:
     """
-    Scan the local network for open TCP port (default 8899).
+    Scan the local network for open TCP port.
     Returns list of IP addresses that responded.
     """
-    # Determine local subnet from hostname
+    # Get real local IP by connecting to a public address (no data sent)
+    local_ip = "192.168.1.1"
     try:
-        local_ip = socket.gethostbyname(socket.gethostname())
-    except OSError:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+    except Exception:
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            pass
+
+    _LOGGER.debug("XT211 scan: local IP detected as %s", local_ip)
+
+    # Fallback if we still got loopback
+    if local_ip.startswith("127.") or local_ip == "0.0.0.0":
         local_ip = "192.168.1.1"
+        _LOGGER.warning("XT211 scan: loopback detected, falling back to %s", local_ip)
 
     try:
         network = IPv4Network(f"{local_ip}/24", strict=False)
     except ValueError:
         network = IPv4Network("192.168.1.0/24", strict=False)
+
+    _LOGGER.debug("XT211 scan: scanning %s on port %d", network, port)
 
     found: list[str] = []
 
@@ -125,14 +141,23 @@ async def _scan_network(port: int, timeout: float = 0.5) -> list[str]:
                 timeout=timeout,
             )
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
             found.append(ip)
+            _LOGGER.debug("XT211 scan: found device at %s:%d", ip, port)
         except Exception:
             pass
 
-    # Probe all hosts in /24 concurrently (skip network and broadcast)
+    # Probe all hosts in /24 concurrently
     hosts = [str(h) for h in network.hosts()]
-    await asyncio.gather(*[_probe(ip) for ip in hosts])
+    # Split into batches to avoid overwhelming the network stack
+    batch_size = 50
+    for i in range(0, len(hosts), batch_size):
+        batch = hosts[i:i + batch_size]
+        await asyncio.gather(*[_probe(ip) for ip in batch])
+
     return sorted(found)
 
 
