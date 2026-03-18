@@ -143,22 +143,6 @@ V logu pak uvidíš:
 - parsed OBIS objekty
 - aktualizaci coordinatoru
 
-## Změny ve verzi 0.8.0
-
-- README přepsané podle reálně funkční konfigurace
-- přidané screenshoty nastavení převodníku
-- přidané screenshoty výsledku v Home Assistantu
-- přidaná složka `docs/images`
-- přidaná složka `docs/pdfs`
-- doplněný `CHANGELOG.md`
-
-Předchozí funkční opravy z verzí 0.7.6 a 0.7.7:
-- oprava parseru DLMS/COSEM
-- oprava zpracování TCP streamu
-- oprava binárních senzorů
-- oprava mapování výrobního čísla
-- odstranění trvale prázdných entit
-
 ## Podklady v repozitáři
 
 - `docs/pdfs/cez_rs485_han_interface.pdf`
