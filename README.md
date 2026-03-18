@@ -24,6 +24,7 @@ XT211 / Relay box
 ## Ověřený hardware
 
 -  PUSR USR-USR-DR134
+-  Předpokládám, že bude fungovat každý RS485-TCP převodník
 
 ## Instalace přes HACS
 
