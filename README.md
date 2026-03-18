@@ -5,7 +5,7 @@
 
 > Čtení dat z elektroměru Sagemcom XT211 / Relay box (ČEZ Distribuce) přes RS485-to-Ethernet převodník do Home Assistantu.
 
-Tahle integrace čte push data z HAN / RS485 rozhraní elektroměru přes TCP server na převodníku. Není potřeba ESPHome ani ESP32.
+Tahle integrace čte push data z HAN / RS485 rozhraní elektroměru přes TCP server na převodníku. 
 
 ## Jak to funguje
 
@@ -17,7 +17,10 @@ XT211 / Relay box
                         └── Home Assistant
 ```
 
-Elektroměr posílá jednosměrná DLMS/COSEM data z elektroměru k zákazníkovi rychlostí 9600 Bd a podle dokumentace ČEZ se push zprávy předávají 1× za 60 s. Rozhraní je vyvedené na konektoru RJ12, kde je Data A na pinu 3, Data B na pinu 4 a GND na pinu 6. Dokumentace také uvádí sadu OBIS kódů pro HAN rozhraní. fileciteturn6file0 fileciteturn6file1
+Elektroměr posílá jednosměrná DLMS/COSEM data z elektroměru k zákazníkovi rychlostí 9600 Bd a podle dokumentace ČEZ se push zprávy předávají 1× za 60 s. 
+Rozhraní je vyvedené na konektoru RJ12, kde je Data A na pinu 3, Data B na pinu 4 a GND na pinu 6. 
+Dokumentace také uvádí sadu OBIS kódů pro HAN rozhraní. 
+fileciteturn6file0 fileciteturn6file1
 
 ## Ověřený hardware
 
