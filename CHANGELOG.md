@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.9
+- opraven HACS release balík pro `content_in_root: true`
+- release asset `xt211_han.zip` už obsahuje přímo soubory integrace v rootu ZIPu
+- doplněno `content_in_root` do `hacs.json`
+- sjednocena verze balíku na 0.8.9
+
 ## 0.8.7
 - zvýšena verze balíku na 0.8.7
 - sjednocena verze v kořenovém i integračním `manifest.json`

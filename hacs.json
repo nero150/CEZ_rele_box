@@ -6,5 +6,6 @@
   "iot_class": "local_push",
   "render_readme": true,
   "zip_release": true,
-  "filename": "xt211_han.zip"
+  "filename": "xt211_han.zip",
+  "content_in_root": true
 }

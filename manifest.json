@@ -1,7 +1,7 @@
 {
   "domain": "xt211_han",
   "name": "XT211 HAN (RS485 via Ethernet)",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "documentation": "https://github.com/nero150/CEZ_rele_box",
   "issue_tracker": "https://github.com/nero150/CEZ_rele_box/issues",
   "dependencies": [],
