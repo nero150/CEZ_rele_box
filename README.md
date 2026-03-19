@@ -63,7 +63,7 @@ Použité nastavení na funkční sestavě:
 
 ### 3. Kontrola, že převodník opravdu posílá data
 
-Na stavové stránce převodníku je vidět aktivní klient a počitadlo `TX/RX Count`. Pokud **roste TX počet bajtů**, převodník normálně odesílá data z elektroměru do sítě. Na ukázce níže je vidět připojený klient `192.168.0.190` a narůstající `TX Count`, zatímco `RX` zůstává nulové. To odpovídá jednosměrnému provozu elektroměr → zákazník, který je uvedený i v dokumentaci ČEZ. fileciteturn6file0
+Na stavové stránce převodníku je vidět aktivní klient a počitadlo `TX/RX Count`. Pokud **roste TX počet bajtů**, převodník normálně odesílá data z elektroměru do sítě. Na ukázce níže je vidět připojený klient `192.168.0.190` a narůstající `TX Count`, zatímco `RX` zůstává nulové. To odpovídá jednosměrnému provozu elektroměr → zákazník, který je uvedený i v dokumentaci ČEZ. 
 
 ![Status převodníku a TX počitadlo](docs/images/converter_status_tx.png)
 
