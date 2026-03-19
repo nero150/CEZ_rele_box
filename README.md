@@ -23,7 +23,7 @@ XT211 / Relay box
 
 ## Ověřený hardware
 
--  PUSR USR-USR-DR134
+-  PUSR USR-USR-DR134 (https://www.pusr.com/products/Lipstick-Size-Serial-Device-Server.html)
 -  Předpokládám, že bude fungovat každý RS485-TCP převodník
 
 ## Instalace přes HACS
