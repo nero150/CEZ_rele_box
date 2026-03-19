@@ -1,8 +1,10 @@
 {
   "name": "XT211 HAN RS485 (via Ethernet)",
   "description": "Home Assistant integration for Sagemcom XT211 smart meter via RS485-to-Ethernet adapter (e.g. USR-DR134). Reads DLMS/COSEM PUSH data without ESP32.",
-  "documentation": "https://github.com/nero150/xt211-han-ha",
-  "issue_tracker": "https://github.com/nero150/xt211-han-ha/issues",
+  "documentation": "https://github.com/nero150/CEZ_rele_box",
+  "issue_tracker": "https://github.com/nero150/CEZ_rele_box/issues",
   "iot_class": "local_push",
-  "render_readme": true
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "xt211_han.zip"
 }
