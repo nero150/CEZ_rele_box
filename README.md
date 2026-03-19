@@ -5,7 +5,7 @@
 
 > Čtení dat z elektroměru Sagemcom XT211 / Relay box (ČEZ Distribuce) přes RS485-to-Ethernet převodník do Home Assistantu.
 
-Tahle integrace čte push data z HAN / RS485 rozhraní elektroměru přes TCP server na převodníku. 
+Tahle integrace čte push data z HAN / RS485 rozhraní elektroměru přes TCP server na převodníku.
 
 ## Jak to funguje
 
@@ -17,114 +17,22 @@ XT211 / Relay box
                         └── Home Assistant
 ```
 
-- Elektroměr posílá jednosměrná DLMS/COSEM data z elektroměru k zákazníkovi rychlostí 9600 Bd a podle dokumentace ČEZ se push zprávy předávají 1× za 60 s. 
-- Rozhraní je vyvedené na konektoru RJ12, kde je Data A na pinu 3, Data B na pinu 4 a GND na pinu 6. 
-- Dokumentace také uvádí sadu OBIS kódů pro HAN rozhraní. 
+- Elektroměr posílá jednosměrná DLMS/COSEM data z elektroměru k zákazníkovi rychlostí 9600 Bd a podle dokumentace ČEZ se push zprávy předávají 1× za 60 s.
+- Rozhraní je vyvedené na konektoru RJ12, kde je Data A na pinu 3, Data B na pinu 4 a GND na pinu 6.
+- Dokumentace také uvádí sadu OBIS kódů pro HAN rozhraní.
 
 ## Ověřený hardware
 
--  PUSR USR-USR-DR134 (https://www.pusr.com/products/Lipstick-Size-Serial-Device-Server.html)
--  Předpokládám, že bude fungovat každý RS485-TCP převodník
+- PUSR USR-USR-DR134
+- Předpoklad je, že bude fungovat každý RS485-TCP převodník
 
 ## Instalace přes HACS
 
 1. Otevři HACS → **Integrace** → **Vlastní repozitáře**.
-2. Přidej URL tohoto repozitáře jako typ **Integration** (https://github.com/nero150/CEZ_rele_box).
+2. Přidej URL tohoto repozitáře jako typ **Integration**.
 3. Nainstaluj integraci **XT211 HAN**.
 4. Restartuj Home Assistant.
 5. V **Nastavení → Zařízení a služby** přidej integraci **XT211 HAN**.
-
-## Nastavení převodníku
-
-### 1. Síťové nastavení
-
-Použité nastavení na funkční sestavě:
-- IP Type: `Static IP`
-- Native IP: `192.168.0.152`
-- Submask: `255.255.255.0`
-- Gateway: `192.168.0.1`
-- DNS Server: `192.168.0.1`
-
-![Síťové nastavení převodníku](docs/images/converter_network_settings.png)
-
-### 2. Sériové / TCP nastavení
-
-Použité nastavení na funkční sestavě:
-- Baud Rate: `9600`
-- Data Size: `8`
-- Parity: `NONE`
-- Stop Bits: `1`
-- Local Port Number: `8899`
-- Work Mode: `TCP Server`
-- Client Overrun Mechanism: `KICK`
-- Client Access Quantity: `4`
-
-![Sériové a TCP nastavení převodníku](docs/images/converter_serial_settings.png)
-
-### 3. Kontrola, že převodník opravdu posílá data
-
-Na stavové stránce převodníku je vidět aktivní klient a počitadlo `TX/RX Count`. Pokud **roste TX počet bajtů**, převodník normálně odesílá data z elektroměru do sítě. Na ukázce níže je vidět připojený klient `192.168.0.190` a narůstající `TX Count`, zatímco `RX` zůstává nulové. To odpovídá jednosměrnému provozu elektroměr → zákazník, který je uvedený i v dokumentaci ČEZ. fileciteturn6file0
-
-![Status převodníku a TX počitadlo](docs/images/converter_status_tx.png)
-
-## Zapojení RJ12 / RS485
-
-Podle dokumentace ČEZ je konektor RJ12 zapojen takto:
-- pin 3 = `Data A`
-- pin 4 = `Data B`
-- pin 6 = `Shield / GND` nebo `Data GND`
-
-![Home Assistant – funkční entity](docs/images/home_assistant_entities.png)
-
-## Co integrace reálně čte
-
-Na reálně otestované sestavě se z XT211 / Relay boxu četou tyto hodnoty:
-- dodávka energie celkem
-- spotřeba energie celkem
-- spotřeba energie T1
-- spotřeba energie T2
-- okamžitý příkon odběru celkem
-- okamžitý příkon odběru L1, L2, L3
-- okamžitý výkon dodávky celkem
-- okamžitý výkon dodávky L1, L2, L3
-- limiter
-- stav odpojovače
-- stav relé R1 až R4
-- aktuální tarif
-- výrobní číslo elektroměru
-
-## Dostupné entity
-
-### Výkon (W)
-- Limiter — `0-0:17.0.0.255`
-- Okamžitý příkon odběru celkem — `1-0:1.7.0.255`
-- Okamžitý příkon odběru L1 — `1-0:21.7.0.255`
-- Okamžitý příkon odběru L2 — `1-0:41.7.0.255`
-- Okamžitý příkon odběru L3 — `1-0:61.7.0.255`
-- Okamžitý výkon dodávky celkem — `1-0:2.7.0.255`
-- Okamžitý výkon dodávky L1 — `1-0:22.7.0.255`
-- Okamžitý výkon dodávky L2 — `1-0:42.7.0.255`
-- Okamžitý výkon dodávky L3 — `1-0:62.7.0.255`
-
-### Energie (kWh)
-- Spotřeba energie celkem — `1-0:1.8.0.255`
-- Spotřeba energie T1 — `1-0:1.8.1.255`
-- Spotřeba energie T2 — `1-0:1.8.2.255`
-- Spotřeba energie T3 — `1-0:1.8.3.255` pokud ji elektroměr posílá
-- Spotřeba energie T4 — `1-0:1.8.4.255` pokud ji elektroměr posílá
-- Dodávka energie celkem — `1-0:2.8.0.255` pokud ji elektroměr posílá
-
-### Binární senzory
-- Stav odpojovače — `0-0:96.3.10.255`
-- Stav relé R1 — `0-1:96.3.10.255`
-- Stav relé R2 — `0-2:96.3.10.255`
-- Stav relé R3 — `0-3:96.3.10.255`
-- Stav relé R4 — `0-4:96.3.10.255`
-
-### Diagnostika
-- Aktuální tarif — `0-0:96.14.0.255`
-- Výrobní číslo — `0-0:96.1.1.255`
-
 
 ## Debug logování
 
@@ -137,19 +45,10 @@ logger:
     custom_components.xt211_han: debug
 ```
 
-V logu pak uvidíš:
-- příjem TCP dat
-- složení rámců ze streamu
-- parsed OBIS objekty
-- aktualizaci coordinatoru
-
 ## Podklady v repozitáři
 
 - `docs/pdfs/cez_rs485_han_interface.pdf`
 - `docs/pdfs/cez_obis_codes_han_2025-02-01.pdf`
-
-## Poděkování
-- Děkuji za inspiraci: https://github.com/Tomer27cz/xt211
 
 ## Licence
 

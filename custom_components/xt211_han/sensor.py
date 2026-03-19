@@ -10,73 +10,27 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import (
-    CONF_HAS_FVE,
-    CONF_PHASES,
-    CONF_RELAY_COUNT,
-    CONF_TARIFFS,
-    DOMAIN,
-    PHASES_3,
-    RELAYS_4,
-    TARIFFS_2,
-)
+from .const import CONF_HAS_FVE, CONF_PHASES, CONF_RELAY_COUNT, CONF_TARIFFS, DOMAIN, PHASES_3, RELAYS_4, TARIFFS_2
 from .coordinator import XT211Coordinator
 from .dlms_parser import OBIS_DESCRIPTIONS
 
-SENSOR_META: dict[str, dict] = {
-    "power": {
-        "device_class": SensorDeviceClass.POWER,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "unit": UnitOfPower.WATT,
-    },
-    "energy": {
-        "device_class": SensorDeviceClass.ENERGY,
-        "state_class": SensorStateClass.TOTAL_INCREASING,
-        "unit": UnitOfEnergy.KILO_WATT_HOUR,
-    },
-    "sensor": {
-        "device_class": None,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "unit": None,
-    },
+SENSOR_META = {
+    "power": {"device_class": SensorDeviceClass.POWER, "state_class": SensorStateClass.MEASUREMENT, "unit": UnitOfPower.WATT},
+    "energy": {"device_class": SensorDeviceClass.ENERGY, "state_class": SensorStateClass.TOTAL_INCREASING, "unit": UnitOfEnergy.KILO_WATT_HOUR},
+    "sensor": {"device_class": None, "state_class": SensorStateClass.MEASUREMENT, "unit": None},
 }
-
 SERIAL_OBIS = ("0-0:96.1.1.255", "0-0:96.1.0.255")
 PRECREATED_TEXT_ENTITIES = {
-    "serial_number": {
-        "name": "Výrobní číslo",
-        "obises": SERIAL_OBIS,
-        "entity_category": EntityCategory.DIAGNOSTIC,
-    },
-    "current_tariff": {
-        "name": "Aktuální tarif",
-        "obises": ("0-0:96.14.0.255",),
-        "entity_category": EntityCategory.DIAGNOSTIC,
-    },
+    "serial_number": {"name": "Výrobní číslo", "obises": SERIAL_OBIS, "entity_category": EntityCategory.DIAGNOSTIC},
+    "current_tariff": {"name": "Aktuální tarif", "obises": ("0-0:96.14.0.255",), "entity_category": EntityCategory.DIAGNOSTIC},
 }
-DYNAMIC_TEXT_OBIS = {
-    "0-0:42.0.0.255",
-    "0-0:96.13.0.255",
-}
-BINARY_OBIS = {
-    "0-0:96.3.10.255",
-    "0-1:96.3.10.255",
-    "0-2:96.3.10.255",
-    "0-3:96.3.10.255",
-    "0-4:96.3.10.255",
-    "0-5:96.3.10.255",
-    "0-6:96.3.10.255",
-}
+DYNAMIC_TEXT_OBIS = {"0-0:42.0.0.255", "0-0:96.13.0.255"}
+BINARY_OBIS = {"0-0:96.3.10.255", "0-1:96.3.10.255", "0-2:96.3.10.255", "0-3:96.3.10.255", "0-4:96.3.10.255", "0-5:96.3.10.255", "0-6:96.3.10.255"}
 TEXT_OBIS = set().union(*(spec["obises"] for spec in PRECREATED_TEXT_ENTITIES.values()), DYNAMIC_TEXT_OBIS)
 
 
 def _device_info(entry: ConfigEntry) -> DeviceInfo:
-    return DeviceInfo(
-        identifiers={(DOMAIN, entry.entry_id)},
-        name=entry.data.get(CONF_NAME, "XT211 HAN"),
-        manufacturer="Sagemcom",
-        model="XT211 AMM",
-    )
+    return DeviceInfo(identifiers={(DOMAIN, entry.entry_id)}, name=entry.data.get(CONF_NAME, "XT211 HAN"), manufacturer="Sagemcom", model="XT211 AMM")
 
 
 def build_enabled_obis(entry: ConfigEntry) -> set[str]:
@@ -84,60 +38,29 @@ def build_enabled_obis(entry: ConfigEntry) -> set[str]:
     has_fve = entry.data.get(CONF_HAS_FVE, True)
     tariffs = int(entry.data.get(CONF_TARIFFS, TARIFFS_2))
     relay_count = int(entry.data.get(CONF_RELAY_COUNT, RELAYS_4))
-
-    enabled_obis: set[str] = {
-        "0-0:17.0.0.255",
-        "1-0:1.7.0.255",
-        "1-0:1.8.0.255",
-        *TEXT_OBIS,
-    }
-
-    relay_obis = {
-        1: "0-1:96.3.10.255",
-        2: "0-2:96.3.10.255",
-        3: "0-3:96.3.10.255",
-        4: "0-4:96.3.10.255",
-        5: "0-5:96.3.10.255",
-        6: "0-6:96.3.10.255",
-    }
+    enabled_obis = {"0-0:17.0.0.255", "1-0:1.7.0.255", "1-0:1.8.0.255", *TEXT_OBIS}
+    relay_obis = {1: "0-1:96.3.10.255", 2: "0-2:96.3.10.255", 3: "0-3:96.3.10.255", 4: "0-4:96.3.10.255", 5: "0-5:96.3.10.255", 6: "0-6:96.3.10.255"}
     enabled_obis.add("0-0:96.3.10.255")
     for idx in range(1, relay_count + 1):
         enabled_obis.add(relay_obis[idx])
-
     if phases == PHASES_3:
         enabled_obis.update({"1-0:21.7.0.255", "1-0:41.7.0.255", "1-0:61.7.0.255"})
-
     if has_fve:
         enabled_obis.add("1-0:2.7.0.255")
         enabled_obis.add("1-0:2.8.0.255")
         if phases == PHASES_3:
             enabled_obis.update({"1-0:22.7.0.255", "1-0:42.7.0.255", "1-0:62.7.0.255"})
-
     for tariff in range(1, tariffs + 1):
         enabled_obis.add(f"1-0:1.8.{tariff}.255")
-
     return enabled_obis
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: XT211Coordinator = hass.data[DOMAIN][entry.entry_id]
     enabled_obis = build_enabled_obis(entry)
-
-    entities = [
-        XT211SensorEntity(coordinator, entry, obis, meta)
-        for obis, meta in OBIS_DESCRIPTIONS.items()
-        if obis in enabled_obis and obis not in BINARY_OBIS and obis not in TEXT_OBIS
-    ]
-    entities.extend(
-        XT211AliasedTextSensorEntity(coordinator, entry, key, spec)
-        for key, spec in PRECREATED_TEXT_ENTITIES.items()
-    )
+    entities = [XT211SensorEntity(coordinator, entry, obis, meta) for obis, meta in OBIS_DESCRIPTIONS.items() if obis in enabled_obis and obis not in BINARY_OBIS and obis not in TEXT_OBIS]
+    entities.extend(XT211AliasedTextSensorEntity(coordinator, entry, key, spec) for key, spec in PRECREATED_TEXT_ENTITIES.items())
     async_add_entities(entities)
-
     registered_obis = {entity._obis for entity in entities if hasattr(entity, "_obis")}
 
     @callback

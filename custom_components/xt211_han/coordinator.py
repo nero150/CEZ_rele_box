@@ -12,7 +12,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .dlms_parser import DLMSObject, DLMSParser, OBIS_DESCRIPTIONS
 
 _LOGGER = logging.getLogger(__name__)
-
 PUSH_TIMEOUT = 90
 RECONNECT_DELAY = 10
 
@@ -21,12 +20,7 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Persistent TCP listener for XT211 DLMS push frames."""
 
     def __init__(self, hass: HomeAssistant, host: str, port: int, name: str) -> None:
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"XT211 HAN ({host}:{port})",
-            update_interval=None,
-        )
+        super().__init__(hass, _LOGGER, name=f"XT211 HAN ({host}:{port})", update_interval=None)
         self.host = host
         self.port = port
         self.device_name = name
@@ -79,15 +73,11 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             finally:
                 await self._disconnect()
-
             await asyncio.sleep(RECONNECT_DELAY)
 
     async def _connect(self) -> None:
         _LOGGER.info("Connecting to XT211 adapter at %s:%d", self.host, self.port)
-        self._reader, self._writer = await asyncio.wait_for(
-            asyncio.open_connection(self.host, self.port),
-            timeout=10,
-        )
+        self._reader, self._writer = await asyncio.wait_for(asyncio.open_connection(self.host, self.port), timeout=10)
         self._parser = DLMSParser()
         self._connected = True
         _LOGGER.info("Connected to XT211 adapter at %s:%d", self.host, self.port)
@@ -105,50 +95,34 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _receive_loop(self) -> None:
         assert self._reader is not None
-
         while True:
             try:
                 chunk = await asyncio.wait_for(self._reader.read(4096), timeout=PUSH_TIMEOUT)
             except asyncio.TimeoutError as exc:
                 _LOGGER.warning("No data from XT211 for %d s – reconnecting", PUSH_TIMEOUT)
                 raise ConnectionError("Push timeout") from exc
-
             if not chunk:
                 _LOGGER.warning("XT211 adapter closed connection")
                 raise ConnectionError("Remote closed")
-
             _LOGGER.debug("XT211 RX %d bytes: %s", len(chunk), chunk.hex())
             self._parser.feed(chunk)
-
             while True:
                 result = self._parser.get_frame()
                 if result is None:
                     break
-
                 self._frames_received += 1
                 if result.success:
-                    _LOGGER.debug(
-                        "XT211 frame #%d parsed OK: %d object(s)",
-                        self._frames_received,
-                        len(result.objects),
-                    )
+                    _LOGGER.debug("XT211 frame #%d parsed OK: %d object(s)", self._frames_received, len(result.objects))
                     await self._process_frame(result.objects)
                 else:
-                    _LOGGER.debug(
-                        "XT211 frame #%d parse error: %s (raw: %s)",
-                        self._frames_received,
-                        result.error,
-                        result.raw_hex[:120],
-                    )
+                    _LOGGER.debug("XT211 frame #%d parse error: %s (raw: %s)", self._frames_received, result.error, result.raw_hex[:120])
 
     async def _process_frame(self, objects: list[DLMSObject]) -> None:
         if not objects:
             _LOGGER.debug("Received empty DLMS frame")
             return
-
         current = dict(self.data or {})
         changed: list[str] = []
-
         for obj in objects:
             meta = OBIS_DESCRIPTIONS.get(obj.obis, {})
             new_value = {
@@ -161,11 +135,5 @@ class XT211Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 changed.append(obj.obis)
             current[obj.obis] = new_value
             _LOGGER.debug("XT211 OBIS %s = %r %s", obj.obis, obj.value, new_value["unit"])
-
         self.async_set_updated_data(current)
-        _LOGGER.debug(
-            "Coordinator updated with %d object(s), %d changed: %s",
-            len(objects),
-            len(changed),
-            ", ".join(changed[:10]),
-        )
+        _LOGGER.debug("Coordinator updated with %d object(s), %d changed: %s", len(objects), len(changed), ", ".join(changed[:10]))

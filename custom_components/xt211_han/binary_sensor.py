@@ -15,21 +15,11 @@ from .sensor import BINARY_OBIS, build_enabled_obis, _device_info
 from .dlms_parser import OBIS_DESCRIPTIONS
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: XT211Coordinator = hass.data[DOMAIN][entry.entry_id]
     enabled_obis = build_enabled_obis(entry)
-
-    entities = [
-        XT211BinarySensorEntity(coordinator, entry, obis, meta)
-        for obis, meta in OBIS_DESCRIPTIONS.items()
-        if obis in enabled_obis and obis in BINARY_OBIS
-    ]
+    entities = [XT211BinarySensorEntity(coordinator, entry, obis, meta) for obis, meta in OBIS_DESCRIPTIONS.items() if obis in enabled_obis and obis in BINARY_OBIS]
     async_add_entities(entities)
-
     registered_obis = {entity._obis for entity in entities}
 
     @callback
